@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useSettingsStore } from './settingsStore'
 
 export interface LogEntry {
   id: string
@@ -9,15 +10,12 @@ export interface LogEntry {
 
 interface LogStore {
   logs: LogEntry[]
-  maxLogs: number
   addLog: (level: LogEntry['level'], message: string) => void
   clearLogs: () => void
-  setMaxLogs: (max: number) => void
 }
 
 export const useLogStore = create<LogStore>((set) => ({
   logs: [],
-  maxLogs: 500,
 
   addLog: (level, message) => {
     const entry: LogEntry = {
@@ -27,9 +25,10 @@ export const useLogStore = create<LogStore>((set) => ({
       message
     }
     set((state) => {
+      const maxLogs = useSettingsStore.getState().maxLogs
       const updated = [...state.logs, entry]
-      if (updated.length > state.maxLogs) {
-        updated.splice(0, updated.length - state.maxLogs)
+      if (updated.length > maxLogs) {
+        updated.splice(0, updated.length - maxLogs)
       }
       return { logs: updated }
     })
@@ -37,10 +36,6 @@ export const useLogStore = create<LogStore>((set) => ({
 
   clearLogs: () => {
     set({ logs: [] })
-  },
-
-  setMaxLogs: (max) => {
-    set({ maxLogs: max })
   }
 }))
 

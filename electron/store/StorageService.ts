@@ -119,7 +119,18 @@ export class StorageService {
     try {
       if (fs.existsSync(this.settingsPath)) {
         const data = fs.readFileSync(this.settingsPath, 'utf-8')
-        return JSON.parse(data)
+        const loaded = JSON.parse(data)
+        return {
+          maxMessagesPerSubscription: loaded.maxMessagesPerSubscription ?? 1000,
+          autoFormatJson: loaded.autoFormatJson ?? true,
+          theme: loaded.theme ?? 'dark',
+          logLevel: loaded.logLevel ?? 'info',
+          defaultServer: loaded.defaultServer ?? 'localhost',
+          defaultPort: loaded.defaultPort ?? 4222,
+          defaultTimeout: loaded.defaultTimeout ?? 5000,
+          maxLogs: loaded.maxLogs ?? 500,
+          messageDisplayLength: loaded.messageDisplayLength ?? 50
+        }
       }
     } catch (error) {
       console.error('Failed to load settings:', error)
@@ -128,7 +139,12 @@ export class StorageService {
       maxMessagesPerSubscription: 1000,
       autoFormatJson: true,
       theme: 'dark',
-      logLevel: 'info'
+      logLevel: 'info',
+      defaultServer: 'localhost',
+      defaultPort: 4222,
+      defaultTimeout: 5000,
+      maxLogs: 500,
+      messageDisplayLength: 50
     }
   }
 

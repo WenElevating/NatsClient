@@ -10,7 +10,12 @@ const defaultSettings: AppSettings = {
   maxMessagesPerSubscription: 1000,
   autoFormatJson: true,
   theme: 'dark',
-  logLevel: 'info'
+  logLevel: 'info',
+  defaultServer: 'localhost',
+  defaultPort: 4222,
+  defaultTimeout: 5000,
+  maxLogs: 500,
+  messageDisplayLength: 50
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -27,7 +32,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       maxMessagesPerSubscription: updated.maxMessagesPerSubscription,
       autoFormatJson: updated.autoFormatJson,
       theme: updated.theme,
-      logLevel: updated.logLevel
+      logLevel: updated.logLevel,
+      defaultServer: updated.defaultServer,
+      defaultPort: updated.defaultPort,
+      defaultTimeout: updated.defaultTimeout,
+      maxLogs: updated.maxLogs,
+      messageDisplayLength: updated.messageDisplayLength
     })
     set(updated)
   }

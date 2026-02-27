@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import type { NatsMessage, Subscription } from '../types/nats'
+import { useSettingsStore } from './settingsStore'
 
 interface SubscriptionStore {
   subscriptions: Subscription[]
   messages: Map<string, NatsMessage[]>
-  maxMessages: number
   pausedSubscriptions: Set<string>
   searchFilter: string
+  savedSubjects: string[]
 
   addSubscription: (subscription: Subscription) => void
   removeSubscription: (id: string) => void
@@ -15,16 +16,18 @@ interface SubscriptionStore {
   clearMessages: (subscriptionId: string) => void
   togglePause: (subscriptionId: string) => void
   setSearchFilter: (filter: string) => void
-  setMaxMessages: (max: number) => void
   getFilteredMessages: (subscriptionId: string) => NatsMessage[]
+  saveSubject: (subject: string) => void
+  removeSavedSubject: (subject: string) => void
+  getSavedSubjects: () => string[]
 }
 
 export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   subscriptions: [],
   messages: new Map(),
-  maxMessages: 1000,
   pausedSubscriptions: new Set(),
   searchFilter: '',
+  savedSubjects: [],
 
   addSubscription: (subscription) => {
     set((state) => {
@@ -61,10 +64,11 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   },
 
   addMessage: (subscriptionId, message) => {
-    const { maxMessages, pausedSubscriptions } = get()
+    const { pausedSubscriptions } = get()
     if (pausedSubscriptions.has(subscriptionId)) return
 
     set((state) => {
+      const maxMessages = useSettingsStore.getState().maxMessagesPerSubscription
       const newMessages = new Map(state.messages)
       const existing = newMessages.get(subscriptionId) || []
       const updated = [...existing, message]
@@ -100,10 +104,6 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     set({ searchFilter: filter })
   },
 
-  setMaxMessages: (max) => {
-    set({ maxMessages: max })
-  },
-
   getFilteredMessages: (subscriptionId) => {
     const { messages, searchFilter } = get()
     const msgs = messages.get(subscriptionId) || []
@@ -113,7 +113,22 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
       m.subject.toLowerCase().includes(lowerFilter) ||
       m.payload.toLowerCase().includes(lowerFilter)
     )
-  }
+  },
+
+  saveSubject: (subject) => {
+    set((state) => {
+      if (state.savedSubjects.includes(subject)) return state
+      return { savedSubjects: [...state.savedSubjects, subject] }
+    })
+  },
+
+  removeSavedSubject: (subject) => {
+    set((state) => ({
+      savedSubjects: state.savedSubjects.filter(s => s !== subject)
+    }))
+  },
+
+  getSavedSubjects: () => get().savedSubjects
 }))
 
 window.nats.onMessage((data) => {

@@ -10,13 +10,11 @@ import {
   CopyOutlined,
   EyeOutlined
 } from '@ant-design/icons'
-import { useConnectionStore, useSubscriptionStore } from '../stores'
+import { useConnectionStore, useSubscriptionStore, useSettingsStore } from '../stores'
 import type { Subscription, NatsMessage } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
 
 const { Text } = Typography
-
-const MAX_DISPLAY_LENGTH = 50
 
 const SubscriptionPanel: React.FC = () => {
   const [subject, setSubject] = useState('')
@@ -30,8 +28,11 @@ const SubscriptionPanel: React.FC = () => {
     togglePause, 
     clearMessages, 
     setSearchFilter,
-    getFilteredMessages
+    getFilteredMessages,
+    savedSubjects,
+    saveSubject
   } = useSubscriptionStore()
+  const { messageDisplayLength } = useSettingsStore()
 
   const [activeSubscriptionId, setActiveSubscriptionId] = useState<string | null>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
@@ -52,6 +53,28 @@ const SubscriptionPanel: React.FC = () => {
       loadSubscriptions()
     }
   }, [isConnected])
+
+  useEffect(() => {
+    const resubscribe = async () => {
+      if (isConnected && savedSubjects.length > 0 && subscriptions.length === 0) {
+        for (const savedSubject of savedSubjects) {
+          const result = await window.nats.subscribe(savedSubject)
+          if (result.success && result.subscriptionId) {
+            const sub: Subscription = {
+              id: result.subscriptionId,
+              subject: savedSubject,
+              active: true,
+              messageCount: 0,
+              createdAt: new Date()
+            }
+            addSubscription(sub)
+          }
+        }
+        message.success(`已自动恢复 ${savedSubjects.length} 个订阅`)
+      }
+    }
+    resubscribe()
+  }, [isConnected, savedSubjects, subscriptions.length, addSubscription])
 
   const handleSubscribe = useCallback(async () => {
     if (!subject.trim()) {
@@ -74,13 +97,14 @@ const SubscriptionPanel: React.FC = () => {
         createdAt: new Date()
       }
       addSubscription(sub)
+      saveSubject(subject)
       setActiveSubscriptionId(sub.id)
       setSubject('')
       message.success(`已订阅: ${subject}`)
     } else {
       message.error(`订阅失败: ${result.error}`)
     }
-  }, [subject, isConnected, addSubscription])
+  }, [subject, isConnected, addSubscription, saveSubject])
 
   const handleUnsubscribe = useCallback(async (id: string) => {
     const result = await window.nats.unsubscribe(id)
@@ -107,10 +131,10 @@ const SubscriptionPanel: React.FC = () => {
 
   const truncatePayload = (payload: string, isJson: boolean): { display: string; truncated: boolean } => {
     const formatted = isJson ? formatJson(payload) : payload
-    if (formatted.length <= MAX_DISPLAY_LENGTH) {
+    if (formatted.length <= messageDisplayLength) {
       return { display: formatted, truncated: false }
     }
-    return { display: formatted.substring(0, MAX_DISPLAY_LENGTH) + '...', truncated: true }
+    return { display: formatted.substring(0, messageDisplayLength) + '...', truncated: true }
   }
 
   const activeMessages = activeSubscriptionId ? getFilteredMessages(activeSubscriptionId) : []

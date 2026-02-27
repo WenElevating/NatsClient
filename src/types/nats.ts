@@ -103,4 +103,9 @@ export interface AppSettings {
   autoFormatJson: boolean
   theme: 'dark' | 'light'
   logLevel: 'debug' | 'info' | 'warn' | 'error'
+  defaultServer: string
+  defaultPort: number
+  defaultTimeout: number
+  maxLogs: number
+  messageDisplayLength: number
 }

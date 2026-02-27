@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Card, Form, Input, Button, Space, Typography, message, Divider, Statistic, Tabs, Tag, Table, Popconfirm, Tooltip, Modal } from 'antd'
 import { SendOutlined, CopyOutlined, PlayCircleOutlined, StopOutlined, EditOutlined } from '@ant-design/icons'
-import { useConnectionStore } from '../stores'
+import { useConnectionStore, useSettingsStore } from '../stores'
 import type { RequestOptions, RequestResult } from '../types/nats'
 import { formatJson } from '../utils/format'
 
@@ -21,6 +21,7 @@ const RequestPanel: React.FC = () => {
   const [replyForm] = Form.useForm()
   const [editForm] = Form.useForm()
   const { connectionState } = useConnectionStore()
+  const { defaultTimeout } = useSettingsStore()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<RequestResult | null>(null)
   const [replyServices, setReplyServices] = useState<ReplyService[]>([])
@@ -255,7 +256,7 @@ const RequestPanel: React.FC = () => {
             <Form.Item
               name="timeout"
               label="超时时间 (毫秒)"
-              initialValue={5000}
+              initialValue={defaultTimeout}
             >
               <Input type="number" min={100} max={60000} />
             </Form.Item>

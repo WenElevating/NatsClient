@@ -5,15 +5,18 @@ import {
   BorderOutlined, 
   CloseOutlined,
   BlockOutlined,
-  CloudOutlined
+  CloudOutlined,
+  SunOutlined,
+  MoonOutlined
 } from '@ant-design/icons'
-import { useConnectionStore } from '../stores'
+import { useConnectionStore, useSettingsStore } from '../stores'
 
 const { Text } = Typography
 
 const TitleBar: React.FC = () => {
   const [isMaximized, setIsMaximized] = useState(false)
   const { connectionState } = useConnectionStore()
+  const { theme, updateSettings } = useSettingsStore()
 
   useEffect(() => {
     const checkMaximized = async () => {
@@ -35,6 +38,10 @@ const TitleBar: React.FC = () => {
 
   const handleClose = async () => {
     await window.nats.closeWindow()
+  }
+
+  const handleToggleTheme = async () => {
+    await updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' })
   }
 
   const getStatusColor = () => {
@@ -75,6 +82,11 @@ const TitleBar: React.FC = () => {
       </div>
       
       <div className="title-bar-controls">
+        <Tooltip title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}>
+          <button className="title-bar-btn theme-toggle" onClick={handleToggleTheme}>
+            {theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+          </button>
+        </Tooltip>
         <Tooltip title="最小化">
           <button className="title-bar-btn minimize" onClick={handleMinimize}>
             <MinusOutlined />

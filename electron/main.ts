@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { setupIpcHandlers, cleanupIpcHandlers } from './ipc/index'
 import { setupStorageIpcHandlers } from './ipc/storage'
+import { windowStateManager } from './store/WindowStateManager'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -17,9 +18,13 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let win: BrowserWindow | null
 
 function createWindow() {
+  const windowState = windowStateManager.getState()
+  
   win = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    x: windowState.x,
+    y: windowState.y,
+    width: windowState.width,
+    height: windowState.height,
     minWidth: 1000,
     minHeight: 700,
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
@@ -44,6 +49,16 @@ function createWindow() {
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  if (windowState.isMaximized) {
+    win.maximize()
+  }
+
+  win.on('close', () => {
+    if (win) {
+      windowStateManager.saveState(win)
+    }
+  })
 
   setupIpcHandlers(win)
   setupStorageIpcHandlers()

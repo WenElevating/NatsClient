@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import { Modal, Form, Input, InputNumber, Switch } from 'antd'
 import type { ConnectionConfig } from '../types/nats'
-import { useConnectionStore } from '../stores'
+import { useConnectionStore, useSettingsStore } from '../stores'
 
 interface ConnectionFormProps {
   visible: boolean
@@ -12,6 +12,7 @@ interface ConnectionFormProps {
 const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, onClose }) => {
   const [form] = Form.useForm()
   const { addConnection } = useConnectionStore()
+  const { defaultServer, defaultPort } = useSettingsStore()
 
   useEffect(() => {
     if (visible) {
@@ -20,8 +21,8 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
       } else {
         form.resetFields()
         form.setFieldsValue({
-          servers: 'localhost',
-          port: 4222,
+          servers: defaultServer,
+          port: defaultPort,
           tls: false,
           autoReconnect: true,
           maxReconnectAttempts: 10,
@@ -29,7 +30,7 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
         })
       }
     }
-  }, [visible, connection, form])
+  }, [visible, connection, form, defaultServer, defaultPort])
 
   const handleSubmit = async () => {
     try {

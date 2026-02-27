@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { Layout, Tabs, ConfigProvider, theme } from 'antd'
 import { 
   SendOutlined, 
@@ -16,12 +16,13 @@ import {
   TitleBar
 } from '../components'
 import { useConnectionStore, useSettingsStore, useLogStore } from '../stores'
+import { darkTheme, lightTheme } from '../themes'
 
 const { Sider, Content, Header } = Layout
 
 const MainLayout: React.FC = () => {
   const { connectionState } = useConnectionStore()
-  const { loadSettings } = useSettingsStore()
+  const { loadSettings, theme: currentTheme } = useSettingsStore()
   const { addLog } = useLogStore()
 
   useEffect(() => {
@@ -39,6 +40,43 @@ const MainLayout: React.FC = () => {
     }
     addLog(connectionState.status === 'error' ? 'error' : 'info', statusMessages[connectionState.status])
   }, [connectionState.status, connectionState.error, addLog])
+
+  const themeConfig = useMemo(() => {
+    const isDark = currentTheme === 'dark'
+    const themeToken = isDark ? darkTheme : lightTheme
+    
+    return {
+      algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+      token: {
+        colorPrimary: themeToken.colorPrimary,
+        colorBgContainer: themeToken.colorBgContainer,
+        colorBgElevated: themeToken.colorBgElevated,
+        colorBorder: themeToken.colorBorder,
+        colorText: themeToken.colorText,
+        colorTextSecondary: themeToken.colorTextSecondary,
+      },
+      components: {
+        Layout: {
+          siderBg: themeToken.siderBg,
+          headerBg: themeToken.headerBg,
+          bodyBg: themeToken.bodyBg,
+        },
+        Card: {
+          colorBgContainer: themeToken.colorBgContainer,
+        },
+        Table: {
+          headerBg: themeToken.colorBgElevated,
+          rowHoverBg: isDark ? '#252540' : '#f5f5f5',
+        },
+        Input: {
+          colorBgContainer: isDark ? '#252540' : '#ffffff',
+        },
+        Select: {
+          colorBgContainer: isDark ? '#252540' : '#ffffff',
+        },
+      }
+    }
+  }, [currentTheme])
 
   const tabItems = [
     {
@@ -84,39 +122,7 @@ const MainLayout: React.FC = () => {
   ]
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: theme.darkAlgorithm,
-        token: {
-          colorPrimary: '#1890ff',
-          colorBgContainer: '#1a1a2e',
-          colorBgElevated: '#16213e',
-          colorBorder: '#2d2d44',
-          colorText: '#e0e0e0',
-          colorTextSecondary: '#a0a0a0',
-        },
-        components: {
-          Layout: {
-            siderBg: '#16213e',
-            headerBg: '#16213e',
-            bodyBg: '#0f0f1a',
-          },
-          Card: {
-            colorBgContainer: '#1a1a2e',
-          },
-          Table: {
-            headerBg: '#16213e',
-            rowHoverBg: '#252540',
-          },
-          Input: {
-            colorBgContainer: '#252540',
-          },
-          Select: {
-            colorBgContainer: '#252540',
-          },
-        }
-      }}
-    >
+    <ConfigProvider theme={themeConfig}>
       <Layout className="main-layout">
         <Header className="app-header">
           <TitleBar />
