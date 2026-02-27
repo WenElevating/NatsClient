@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Form, Input, Button, Space, Typography, message, Divider, Statistic, Tabs, Tag, Table, Popconfirm, Tooltip } from 'antd'
-import { SendOutlined, CopyOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons'
+import { Card, Form, Input, Button, Space, Typography, message, Divider, Statistic, Tabs, Tag, Table, Popconfirm, Tooltip, Modal } from 'antd'
+import { SendOutlined, CopyOutlined, PlayCircleOutlined, StopOutlined, EditOutlined } from '@ant-design/icons'
 import { useConnectionStore } from '../stores'
 import type { RequestOptions, RequestResult } from '../types/nats'
 import { formatJson } from '../utils/format'
@@ -19,10 +19,13 @@ interface ReplyService {
 const RequestPanel: React.FC = () => {
   const [requestForm] = Form.useForm()
   const [replyForm] = Form.useForm()
+  const [editForm] = Form.useForm()
   const { connectionState } = useConnectionStore()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<RequestResult | null>(null)
   const [replyServices, setReplyServices] = useState<ReplyService[]>([])
+  const [editModalVisible, setEditModalVisible] = useState(false)
+  const [editingService, setEditingService] = useState<ReplyService | null>(null)
 
   const isConnected = connectionState.status === 'connected'
 
@@ -124,6 +127,40 @@ const RequestPanel: React.FC = () => {
     }
   }
 
+  const handleEditService = (service: ReplyService) => {
+    setEditingService(service)
+    editForm.setFieldsValue({
+      responsePayload: service.responsePayload
+    })
+    setEditModalVisible(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingService) return
+    
+    try {
+      const values = await editForm.validateFields()
+      const response = await window.nats.updateReplyPayload(editingService.id, values.responsePayload)
+      
+      if (response.success) {
+        setReplyServices(prev => prev.map(s => 
+          s.id === editingService.id 
+            ? { ...s, responsePayload: values.responsePayload }
+            : s
+        ))
+        setEditModalVisible(false)
+        setEditingService(null)
+        message.success('响应内容已更新')
+      } else {
+        message.error(`更新失败: ${response.error}`)
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        message.error(`更新失败: ${error.message}`)
+      }
+    }
+  }
+
   const isJsonResponse = (str: string): boolean => {
     try {
       JSON.parse(str)
@@ -160,18 +197,27 @@ const RequestPanel: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 100,
+      width: 120,
       render: (_: unknown, record: ReplyService) => (
-        <Popconfirm
-          title="确定停止此回复服务？"
-          onConfirm={() => handleStopReplyService(record.id)}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Tooltip title="停止服务">
-            <Button type="text" danger icon={<StopOutlined />} />
+        <Space size={0}>
+          <Tooltip title="编辑响应内容">
+            <Button 
+              type="text" 
+              icon={<EditOutlined />}
+              onClick={() => handleEditService(record)}
+            />
           </Tooltip>
-        </Popconfirm>
+          <Popconfirm
+            title="确定停止此回复服务？"
+            onConfirm={() => handleStopReplyService(record.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Tooltip title="停止服务">
+              <Button type="text" danger icon={<StopOutlined />} />
+            </Tooltip>
+          </Popconfirm>
+        </Space>
       )
     }
   ]
@@ -327,24 +373,54 @@ const RequestPanel: React.FC = () => {
   ]
 
   return (
-    <Card 
-      title="Request / Reply" 
-      className="panel-card"
-      extra={
-        result && (
-          <Space>
-            <Statistic 
-              title="响应时间" 
-              value={result.responseTime} 
-              suffix="ms"
-              valueStyle={{ fontSize: 16 }}
-            />
-          </Space>
-        )
-      }
-    >
-      <Tabs items={tabItems} />
-    </Card>
+    <>
+      <Card 
+        title="Request / Reply" 
+        className="panel-card"
+        extra={
+          result && (
+            <Space>
+              <Statistic 
+                title="响应时间" 
+                value={result.responseTime} 
+                suffix="ms"
+                valueStyle={{ fontSize: 16 }}
+              />
+            </Space>
+          )
+        }
+      >
+        <Tabs items={tabItems} />
+      </Card>
+
+      <Modal
+        title="编辑响应内容"
+        open={editModalVisible}
+        onCancel={() => {
+          setEditModalVisible(false)
+          setEditingService(null)
+        }}
+        onOk={handleSaveEdit}
+        okText="保存"
+        cancelText="取消"
+        width={500}
+      >
+        {editingService && (
+          <Form form={editForm} layout="vertical">
+            <Form.Item label="Subject">
+              <Input value={editingService.subject} disabled />
+            </Form.Item>
+            <Form.Item
+              name="responsePayload"
+              label="响应内容"
+              rules={[{ required: true, message: '请输入响应内容' }]}
+            >
+              <TextArea rows={6} placeholder="输入 JSON 或文本响应" />
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
+    </>
   )
 }
 

@@ -103,7 +103,7 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
           name="token"
           label="Token"
         >
-          <Input placeholder="可选" />
+          <Input.Password placeholder="可选" />
         </Form.Item>
 
         <Form.Item

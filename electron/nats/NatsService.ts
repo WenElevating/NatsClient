@@ -11,6 +11,7 @@ export class NatsService extends EventEmitter {
   private connectionState: ConnectionState = { status: 'disconnected' }
   private jsManager: JetStreamManager | null = null
   private replyServices: Map<string, NatsSubscription> = new Map()
+  private replyPayloads: Map<string, string> = new Map()
 
   async connect(config: ConnectionConfig): Promise<void> {
     if (this.nc) {
@@ -45,12 +46,15 @@ export class NatsService extends EventEmitter {
           for await (const s of this.nc!.status()) {
             this.handleStatusUpdate(s)
           }
-        } catch {}
+        } catch (error) {
+          this.emit('log', { level: 'error', message: `Status monitor error: ${error instanceof Error ? error.message : 'Unknown error'}` })
+        }
       })()
 
       try {
         this.jsManager = await this.nc.jetstreamManager()
-      } catch {
+      } catch (error) {
+        this.emit('log', { level: 'warn', message: 'JetStream not available' })
         this.jsManager = null
       }
 
@@ -100,7 +104,9 @@ export class NatsService extends EventEmitter {
     for (const [id, sub] of this.subscriptions) {
       try {
         sub.unsubscribe()
-      } catch {}
+      } catch (error) {
+        this.emit('log', { level: 'warn', message: `Failed to unsubscribe ${id}: ${error instanceof Error ? error.message : 'Unknown error'}` })
+      }
       this.subscriptions.delete(id)
       this.subscriptionInfo.delete(id)
     }
@@ -109,7 +115,9 @@ export class NatsService extends EventEmitter {
       try {
         await this.nc.drain()
         await this.nc.close()
-      } catch {}
+      } catch (error) {
+        this.emit('log', { level: 'warn', message: `Error during disconnect: ${error instanceof Error ? error.message : 'Unknown error'}` })
+      }
       this.nc = null
       this.jsManager = null
     }
@@ -236,6 +244,8 @@ export class NatsService extends EventEmitter {
     }
 
     const id = uuidv4()
+    this.replyPayloads.set(id, responsePayload)
+    
     const sub = this.nc.subscribe(subject, {
       callback: (err, msg) => {
         if (err) {
@@ -245,7 +255,8 @@ export class NatsService extends EventEmitter {
 
         if (msg.reply) {
           try {
-            const payload = this.encodePayload(responsePayload)
+            const currentPayload = this.replyPayloads.get(id) || responsePayload
+            const payload = this.encodePayload(currentPayload)
             msg.respond(payload)
             this.emit('reply-sent', { id, subject, replyTo: msg.reply })
           } catch (respondErr) {
@@ -264,13 +275,13 @@ export class NatsService extends EventEmitter {
     if (sub) {
       sub.unsubscribe()
       this.replyServices.delete(id)
+      this.replyPayloads.delete(id)
     }
   }
 
   async updateReplyPayload(id: string, responsePayload: string): Promise<void> {
-    const sub = this.replyServices.get(id)
-    if (sub) {
-      (sub as any)._responsePayload = responsePayload
+    if (this.replyServices.has(id)) {
+      this.replyPayloads.set(id, responsePayload)
     }
   }
 

@@ -19,6 +19,7 @@ const JetStreamPanel: React.FC = () => {
   const [streams, setStreams] = useState<JetStreamInfo[]>([])
   const [consumers, setConsumers] = useState<ConsumerInfo[]>([])
   const [selectedStream, setSelectedStream] = useState<string | null>(null)
+  const [selectedConsumer, setSelectedConsumer] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [messageModalVisible, setMessageModalVisible] = useState(false)
   const [currentMessage, setCurrentMessage] = useState<StoredMessage | null>(null)
@@ -77,24 +78,25 @@ const JetStreamPanel: React.FC = () => {
     
     const result = await window.nats.fetchMessage(selectedStream, consumerName)
     if (result.success) {
+      setSelectedConsumer(consumerName)
       setCurrentMessage(result.message || null)
       setMessageModalVisible(true)
     }
   }
 
-  const handleAck = async (sequence: number) => {
-    if (!selectedStream || !currentMessage) return
+  const handleAck = async () => {
+    if (!selectedStream || !selectedConsumer || !currentMessage) return
     
-    const result = await window.nats.ackMessage(selectedStream, consumers[0]?.name || '', sequence)
+    const result = await window.nats.ackMessage(selectedStream, selectedConsumer, currentMessage.sequence)
     if (result.success) {
       setMessageModalVisible(false)
     }
   }
 
-  const handleNak = async (sequence: number) => {
-    if (!selectedStream || !currentMessage) return
+  const handleNak = async () => {
+    if (!selectedStream || !selectedConsumer || !currentMessage) return
     
-    const result = await window.nats.nakMessage(selectedStream, consumers[0]?.name || '', sequence)
+    const result = await window.nats.nakMessage(selectedStream, selectedConsumer, currentMessage.sequence)
     if (result.success) {
       setMessageModalVisible(false)
     }
@@ -278,7 +280,7 @@ const JetStreamPanel: React.FC = () => {
             <Space>
               <Popconfirm
                 title="确认 ACK 此消息？"
-                onConfirm={() => handleAck(currentMessage.sequence)}
+                onConfirm={() => handleAck()}
                 okText="确认"
                 cancelText="取消"
               >
@@ -288,7 +290,7 @@ const JetStreamPanel: React.FC = () => {
               </Popconfirm>
               <Popconfirm
                 title="确认 NACK 此消息？"
-                onConfirm={() => handleNak(currentMessage.sequence)}
+                onConfirm={() => handleNak()}
                 okText="确认"
                 cancelText="取消"
               >

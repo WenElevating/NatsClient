@@ -1,10 +1,11 @@
-import { app } from 'electron'
+import { app, safeStorage } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import type { ConnectionConfig, AppSettings } from '../../src/types/nats'
 
 const CONNECTIONS_FILE = 'connections.json'
 const SETTINGS_FILE = 'settings.json'
+const ENCRYPTED_PREFIX = 'enc:'
 
 function getStoragePath(): string {
   const userDataPath = app.getPath('userData')
@@ -21,11 +22,60 @@ export class StorageService {
     this.settingsPath = path.join(storagePath, SETTINGS_FILE)
   }
 
+  private encryptValue(value: string): string {
+    if (!value) return value
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        const encrypted = safeStorage.encryptString(value)
+        return ENCRYPTED_PREFIX + encrypted.toString('base64')
+      }
+    } catch (error) {
+      console.error('Failed to encrypt value:', error)
+    }
+    return value
+  }
+
+  private decryptValue(value: string): string {
+    if (!value || !value.startsWith(ENCRYPTED_PREFIX)) return value
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        const encrypted = Buffer.from(value.slice(ENCRYPTED_PREFIX.length), 'base64')
+        return safeStorage.decryptString(encrypted)
+      }
+    } catch (error) {
+      console.error('Failed to decrypt value:', error)
+    }
+    return ''
+  }
+
+  private encryptConnection(connection: ConnectionConfig): ConnectionConfig {
+    const encrypted = { ...connection }
+    if (encrypted.password) {
+      encrypted.password = this.encryptValue(encrypted.password)
+    }
+    if (encrypted.token) {
+      encrypted.token = this.encryptValue(encrypted.token)
+    }
+    return encrypted
+  }
+
+  private decryptConnection(connection: ConnectionConfig): ConnectionConfig {
+    const decrypted = { ...connection }
+    if (decrypted.password && decrypted.password.startsWith(ENCRYPTED_PREFIX)) {
+      decrypted.password = this.decryptValue(decrypted.password)
+    }
+    if (decrypted.token && decrypted.token.startsWith(ENCRYPTED_PREFIX)) {
+      decrypted.token = this.decryptValue(decrypted.token)
+    }
+    return decrypted
+  }
+
   loadConnections(): ConnectionConfig[] {
     try {
       if (fs.existsSync(this.connectionsPath)) {
         const data = fs.readFileSync(this.connectionsPath, 'utf-8')
-        return JSON.parse(data)
+        const connections: ConnectionConfig[] = JSON.parse(data)
+        return connections.map(c => this.decryptConnection(c))
       }
     } catch (error) {
       console.error('Failed to load connections:', error)
@@ -39,7 +89,8 @@ export class StorageService {
       if (!fs.existsSync(storagePath)) {
         fs.mkdirSync(storagePath, { recursive: true })
       }
-      fs.writeFileSync(this.connectionsPath, JSON.stringify(connections, null, 2))
+      const encryptedConnections = connections.map(c => this.encryptConnection(c))
+      fs.writeFileSync(this.connectionsPath, JSON.stringify(encryptedConnections, null, 2))
     } catch (error) {
       console.error('Failed to save connections:', error)
     }
