@@ -1,11 +1,16 @@
 {
-  "name": "nats_client",
+  "name": "nats-client",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0-alpha.1",
+  "description": "一个现代化、功能丰富的 NATS 桌面客户端",
+  "author": "NATS Client Team",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:win": "tsc && vite build && electron-builder --win",
+    "build:mac": "tsc && vite build && electron-builder --mac",
+    "build:linux": "tsc && vite build && electron-builder --linux",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
