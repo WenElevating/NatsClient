@@ -59,7 +59,8 @@ class VideoDecoderManager {
   private onStatsUpdate?: (stats: { fps: number; frameCount: number; latency: number }) => void
   private onStatusChange?: (status: DecoderStatus) => void
   private status: DecoderStatus = 'idle'
-  private isFirstFrame = true
+  private spsPps: Uint8Array | null = null
+  private configured = false
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -98,13 +99,8 @@ class VideoDecoderManager {
     this.setStatus('initializing')
 
     if ('VideoDecoder' in window) {
-      const success = await this.initWebCodecs()
-      if (success) {
-        this.setStatus('ready')
-      } else {
-        this.setStatus('error')
-      }
-      return success
+      this.setStatus('ready')
+      return true
     }
 
     console.warn('WebCodecs not supported')
@@ -112,14 +108,19 @@ class VideoDecoderManager {
     return false
   }
 
-  private async initWebCodecs(): Promise<boolean> {
+  private async ensureDecoderConfigured(sps: Uint8Array, pps: Uint8Array): Promise<boolean> {
+    if (this.configured && this.decoder) return true
+    
     const codecString = CODEC_SUPPORT[this.config.codec]?.[0]
     if (!codecString) return false
-    
+
     try {
+      const description = this.createAVCDescription(sps, pps)
+      
       const support = await VideoDecoder.isConfigSupported({
         codec: codecString,
-        optimizeForLatency: true
+        optimizeForLatency: true,
+        description
       })
 
       if (!support.supported) {
@@ -137,14 +138,43 @@ class VideoDecoderManager {
       this.decoder.configure({
         codec: codecString,
         optimizeForLatency: true,
-        hardwareAcceleration: 'prefer-hardware'
+        hardwareAcceleration: 'prefer-hardware',
+        description
       })
 
+      this.configured = true
       return true
     } catch (e) {
-      console.error('initWebCodecs error:', e)
+      console.error('ensureDecoderConfigured error:', e)
       return false
     }
+  }
+
+  private createAVCDescription(sps: Uint8Array, pps: Uint8Array): ArrayBuffer {
+    const spsLen = sps.length
+    const ppsLen = pps.length
+    const description = new ArrayBuffer(7 + spsLen + ppsLen)
+    const view = new DataView(description)
+    
+    let offset = 0
+    view.setUint8(offset++, 0x01)
+    view.setUint8(offset++, 0x64)
+    view.setUint8(offset++, 0x00)
+    view.setUint8(offset++, 0x1F)
+    view.setUint8(offset++, 0xFF)
+    
+    view.setUint8(offset++, 0xE1)
+    view.setUint16(offset, spsLen, false)
+    offset += 2
+    new Uint8Array(description, offset, spsLen).set(sps)
+    offset += spsLen
+    
+    view.setUint8(offset++, 0x01)
+    view.setUint16(offset, ppsLen, false)
+    offset += 2
+    new Uint8Array(description, offset, ppsLen).set(pps)
+    
+    return description
   }
 
   private handleFrame(frame: VideoFrame): void {
@@ -179,42 +209,91 @@ class VideoDecoderManager {
   }
 
   async decode(data: ArrayBuffer | Uint8Array): Promise<{ success: boolean; error?: string }> {
-    if (!this.decoder) {
-      return { success: false, error: '解码器未初始化' }
-    }
-    
     if (this.destroyed) {
       return { success: false, error: '解码器已销毁' }
     }
 
-    try {
-      const chunk = new Uint8Array(data)
+    const chunk = new Uint8Array(data)
+    
+    const nalUnits = this.extractNALUnits(chunk)
+    
+    for (const nal of nalUnits) {
+      const nalType = nal[0] & 0x1F
       
-      const isKeyFrame = this.isFirstFrame || this.checkForKeyFrame(chunk)
-      this.isFirstFrame = false
-      
+      if (nalType === 7) {
+        this.spsPps = nal
+      } else if (nalType === 8 && this.spsPps) {
+        const sps = this.spsPps
+        const pps = nal
+        
+        if (!this.configured) {
+          const success = await this.ensureDecoderConfigured(sps, pps)
+          if (!success) {
+            return { success: false, error: '解码器配置失败' }
+          }
+        }
+      } else if (nalType === 5 && this.configured && this.decoder) {
+        const isKeyFrame = true
+        const encodedChunk = new EncodedVideoChunk({
+          type: isKeyFrame ? 'key' : 'delta',
+          timestamp: performance.now() * 1000,
+          data: chunk
+        })
+        
+        try {
+          this.decoder.decode(encodedChunk)
+          return { success: true }
+        } catch (e) {
+          return { success: false, error: e instanceof Error ? e.message : String(e) }
+        }
+      }
+    }
+    
+    if (this.configured && this.decoder) {
+      const isKeyFrame = this.checkForKeyFrame(chunk)
       const encodedChunk = new EncodedVideoChunk({
         type: isKeyFrame ? 'key' : 'delta',
         timestamp: performance.now() * 1000,
         data: chunk
       })
-
-      this.decoder.decode(encodedChunk)
-      return { success: true }
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e)
-      return { success: false, error: errorMsg }
+      
+      try {
+        this.decoder.decode(encodedChunk)
+        return { success: true }
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+      }
     }
+    
+    return { success: false, error: '等待关键帧...' }
+  }
+
+  private extractNALUnits(data: Uint8Array): Uint8Array[] {
+    const nals: Uint8Array[] = []
+    let start = -1
+    
+    for (let i = 0; i < data.length - 3; i++) {
+      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
+        if (start >= 0) {
+          nals.push(data.slice(start + 4, i))
+        }
+        start = i
+      }
+    }
+    
+    if (start >= 0) {
+      nals.push(data.slice(start + 4))
+    }
+    
+    return nals
   }
 
   private checkForKeyFrame(data: Uint8Array): boolean {
-    if (this.config.codec === 'h264') {
-      for (let i = 0; i < data.length - 4; i++) {
-        if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
-          const nalType = data[i + 4] & 0x1F
-          if (nalType === 5 || nalType === 7 || nalType === 8) {
-            return true
-          }
+    for (let i = 0; i < data.length - 4; i++) {
+      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
+        const nalType = data[i + 4] & 0x1F
+        if (nalType === 5 || nalType === 7 || nalType === 8) {
+          return true
         }
       }
     }
@@ -235,7 +314,8 @@ class VideoDecoderManager {
     if (this.decoder) {
       this.decoder.reset()
       this.frameCount = 0
-      this.isFirstFrame = true
+      this.configured = false
+      this.spsPps = null
       this.setStatus('ready')
     }
   }
@@ -248,6 +328,8 @@ class VideoDecoderManager {
     }
     this.ctx = null
     this.canvas = null
+    this.configured = false
+    this.spsPps = null
     this.setStatus('idle')
   }
 }
