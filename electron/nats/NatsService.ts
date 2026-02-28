@@ -527,10 +527,9 @@ export class NatsService extends EventEmitter {
 
     try {
       const js = this.nc.jetstream()
-      const jsm = await this.nc.jetstreamManager()
       const result: KvBucketInfo[] = []
       
-      const streams = await jsm.streams.list()
+      const streams = await js.streams.list()
       for await (const stream of streams) {
         if (stream.config.name.startsWith('KV_')) {
           try {
