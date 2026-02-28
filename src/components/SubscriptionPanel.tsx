@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
-import { Card, Input, Button, Space, List, Tag, Typography, Empty, Select, message, Popconfirm, Tooltip, Modal } from 'antd'
+import { Card, Input, Button, Space, Tag, Typography, Empty, Select, message, Popconfirm, Tooltip, Modal } from 'antd'
 import { 
   PlusOutlined, 
   DeleteOutlined, 
@@ -11,81 +11,153 @@ import {
   EyeOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
+import { useShallow } from 'zustand/react/shallow'
 import { useConnectionStore, useSubscriptionStore, useSettingsStore } from '../stores'
 import type { Subscription, NatsMessage } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
 
 const { Text } = Typography
 
-interface MessageItemProps {
+const VISIBLE_COUNT = 50
+
+interface MessageRowProps {
   msg: NatsMessage
   messageDisplayLength: number
   onViewDetail: (msg: NatsMessage) => void
   onCopy: (payload: string) => void
 }
 
-const MessageItem = memo(({ msg, messageDisplayLength, onViewDetail, onCopy }: MessageItemProps) => {
-  const truncatePayload = (payload: string, isJson: boolean): { display: string; truncated: boolean } => {
-    const formatted = isJson ? formatJson(payload) : payload
+const MessageRow = memo(({ msg, messageDisplayLength, onViewDetail, onCopy }: MessageRowProps) => {
+  const display = useMemo(() => {
+    const formatted = msg.isJson ? formatJson(msg.payload) : msg.payload
     if (formatted.length <= messageDisplayLength) {
-      return { display: formatted, truncated: false }
+      return formatted
     }
-    return { display: formatted.substring(0, messageDisplayLength) + '...', truncated: true }
-  }
+    return formatted.substring(0, messageDisplayLength) + '...'
+  }, [msg.payload, msg.isJson, messageDisplayLength])
 
-  const { display, truncated } = truncatePayload(msg.payload, msg.isJson)
+  const truncated = msg.payload.length > messageDisplayLength
 
   return (
-    <List.Item className="message-item">
-      <div style={{ width: '100%', padding: '0 4px' }}>
-        <div className="message-header">
-          <Space>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {formatTimestamp(msg.timestamp)}
-            </Text>
-            <Tag color="blue">{msg.subject}</Tag>
-            {msg.replyTo && (
-              <Tag color="purple">Reply: {msg.replyTo}</Tag>
-            )}
-          </Space>
-          <Space size={0}>
-            {truncated && (
-              <Tooltip title="查看详情">
-                <Button 
-                  type="text" 
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={() => onViewDetail(msg)}
-                />
-              </Tooltip>
-            )}
-            <Tooltip title="复制">
-              <Button 
-                type="text" 
-                size="small"
-                icon={<CopyOutlined />}
-                onClick={() => onCopy(msg.payload)}
-              />
-            </Tooltip>
-          </Space>
-        </div>
-        <div 
-          className="message-payload"
-          style={{ 
-            marginBottom: 0, 
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            padding: '8px 12px',
-            fontSize: 12,
-            fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
-            background: 'var(--color-bg-container)',
-            borderRadius: 4
-          }}
-        >
-          {display}
-        </div>
+    <div 
+      className="message-item"
+      style={{ 
+        padding: '8px 4px',
+        borderBottom: '1px solid var(--color-border)'
+      }}
+    >
+      <div className="message-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <Space size={4}>
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {formatTimestamp(msg.timestamp)}
+          </Text>
+          <Tag color="blue" style={{ fontSize: 11, padding: '0 4px', margin: 0 }}>{msg.subject}</Tag>
+        </Space>
+        <Space size={0}>
+          {truncated && (
+            <Button 
+              type="text" 
+              size="small"
+              icon={<EyeOutlined style={{ fontSize: 12 }} />}
+              onClick={() => onViewDetail(msg)}
+              style={{ padding: '0 4px' }}
+            />
+          )}
+          <Button 
+            type="text" 
+            size="small"
+            icon={<CopyOutlined style={{ fontSize: 12 }} />}
+            onClick={() => onCopy(msg.payload)}
+            style={{ padding: '0 4px' }}
+          />
+        </Space>
       </div>
-    </List.Item>
+      <div 
+        style={{ 
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-all',
+          padding: '4px 8px',
+          fontSize: 11,
+          fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+          background: 'var(--color-bg-container)',
+          borderRadius: 4
+        }}
+      >
+        {display}
+      </div>
+    </div>
+  )
+})
+
+interface MessageListProps {
+  subscriptionId: string
+  searchFilter: string
+  messageDisplayLength: number
+  autoScroll: boolean
+  onAutoScrollChange: (autoScroll: boolean) => void
+  onViewDetail: (msg: NatsMessage) => void
+  onCopy: (payload: string) => void
+}
+
+const MessageList = memo(({ 
+  subscriptionId, 
+  searchFilter, 
+  messageDisplayLength, 
+  autoScroll,
+  onAutoScrollChange,
+  onViewDetail,
+  onCopy
+}: MessageListProps) => {
+  const listRef = useRef<HTMLDivElement>(null)
+  const prevCountRef = useRef(0)
+  
+  const messages = useSubscriptionStore(useShallow(state => {
+    const msgs = state.messages.get(subscriptionId) || []
+    if (!searchFilter) return msgs.slice(-VISIBLE_COUNT)
+    const lowerFilter = searchFilter.toLowerCase()
+    return msgs.filter(m => 
+      m.subject.toLowerCase().includes(lowerFilter) ||
+      m.payload.toLowerCase().includes(lowerFilter)
+    ).slice(-VISIBLE_COUNT)
+  }))
+
+  useEffect(() => {
+    if (autoScroll && listRef.current && messages.length > 0 && messages.length !== prevCountRef.current) {
+      prevCountRef.current = messages.length
+      listRef.current.scrollTop = listRef.current.scrollHeight
+    }
+  }, [messages.length, autoScroll])
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement
+    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 100
+    onAutoScrollChange(isAtBottom)
+  }, [onAutoScrollChange])
+
+  return (
+    <div 
+      className="message-list" 
+      ref={listRef}
+      onScroll={handleScroll}
+    >
+      {messages.length === 0 ? (
+        <Empty 
+          description="暂无消息" 
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          style={{ marginTop: 40 }}
+        />
+      ) : (
+        messages.map((msg) => (
+          <MessageRow 
+            key={msg.id}
+            msg={msg}
+            messageDisplayLength={messageDisplayLength}
+            onViewDetail={onViewDetail}
+            onCopy={onCopy}
+          />
+        ))
+      )}
+    </div>
   )
 })
 
@@ -102,14 +174,13 @@ const SubscriptionPanel: React.FC = () => {
     togglePause, 
     clearMessages, 
     setSearchFilter,
-    getFilteredMessages,
     savedSubjects,
-    saveSubject
+    saveSubject,
+    removeSavedSubject
   } = useSubscriptionStore()
   const { messageDisplayLength } = useSettingsStore()
 
   const [activeSubscriptionId, setActiveSubscriptionId] = useState<string | null>(null)
-  const messageListRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [detailModalVisible, setDetailModalVisible] = useState(false)
   const [detailMessage, setDetailMessage] = useState<NatsMessage | null>(null)
@@ -118,10 +189,14 @@ const SubscriptionPanel: React.FC = () => {
 
   useEffect(() => {
     const loadSubscriptions = async () => {
-      const subs = await window.nats.getSubscriptions()
-      subs.forEach(sub => {
-        addSubscription(sub)
-      })
+      const result = await window.nats.getSubscriptions()
+      if (result) {
+        result.forEach((sub: Subscription) => {
+          if (!subscriptions.find(s => s.id === sub.id)) {
+            addSubscription(sub)
+          }
+        })
+      }
     }
     if (isConnected) {
       loadSubscriptions()
@@ -148,7 +223,7 @@ const SubscriptionPanel: React.FC = () => {
       }
     }
     resubscribe()
-  }, [isConnected, savedSubjects, subscriptions.length, addSubscription])
+  }, [isConnected, savedSubjects, subscriptions.length, addSubscription, t])
 
   const handleSubscribe = useCallback(async () => {
     if (!subject.trim()) {
@@ -181,9 +256,13 @@ const SubscriptionPanel: React.FC = () => {
   }, [subject, isConnected, addSubscription, saveSubject, t])
 
   const handleUnsubscribe = useCallback(async (id: string) => {
+    const sub = subscriptions.find(s => s.id === id)
     const result = await window.nats.unsubscribe(id)
     if (result.success) {
       removeSubscription(id)
+      if (sub) {
+        removeSavedSubject(sub.subject)
+      }
       if (activeSubscriptionId === id) {
         setActiveSubscriptionId(subscriptions.length > 1 ? subscriptions.find(s => s.id !== id)?.id || null : null)
       }
@@ -191,7 +270,7 @@ const SubscriptionPanel: React.FC = () => {
     } else {
       message.error(`${t('subscribe.unsubscribeFailed', '取消订阅失败')}: ${result.error}`)
     }
-  }, [activeSubscriptionId, removeSubscription, subscriptions, t])
+  }, [activeSubscriptionId, removeSubscription, removeSavedSubject, subscriptions, t])
 
   const handleCopyMessage = (payload: string) => {
     navigator.clipboard.writeText(payload)
@@ -203,26 +282,12 @@ const SubscriptionPanel: React.FC = () => {
     setDetailModalVisible(true)
   }
 
-  const activeMessages = useMemo(() => {
-    if (!activeSubscriptionId) return []
-    const msgs = getFilteredMessages(activeSubscriptionId)
-    return msgs.slice(-500)
-  }, [activeSubscriptionId, getFilteredMessages])
+  const handleScrollStateChange = useCallback((isAtBottom: boolean) => {
+    setAutoScroll(isAtBottom)
+  }, [])
   
   const activeSubscription = subscriptions.find(s => s.id === activeSubscriptionId)
   const isPaused = activeSubscriptionId ? pausedSubscriptions.has(activeSubscriptionId) : false
-
-  useEffect(() => {
-    if (autoScroll && messageListRef.current && activeMessages.length > 0) {
-      messageListRef.current.scrollTop = messageListRef.current.scrollHeight
-    }
-  }, [activeMessages, autoScroll])
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLDivElement
-    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 50
-    setAutoScroll(isAtBottom)
-  }
 
   const subscriptionOptions = subscriptions.map(sub => ({
     value: sub.id,
@@ -305,12 +370,7 @@ const SubscriptionPanel: React.FC = () => {
               {!autoScroll && (
                 <Button 
                   size="small"
-                  onClick={() => {
-                    setAutoScroll(true)
-                    if (messageListRef.current) {
-                      messageListRef.current.scrollTop = messageListRef.current.scrollHeight
-                    }
-                  }}
+                  onClick={() => setAutoScroll(true)}
                 >
                   {t('subscribe.scrollToLatest', '跳转最新')}
                 </Button>
@@ -343,31 +403,15 @@ const SubscriptionPanel: React.FC = () => {
             </Space>
           }
         >
-          <div 
-            className="message-list" 
-            ref={messageListRef}
-            onScroll={handleScroll}
-          >
-            {activeMessages.length === 0 ? (
-              <Empty 
-                description={t('subscribe.noMessages')} 
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                style={{ marginTop: 40 }}
-              />
-            ) : (
-              <List
-                dataSource={activeMessages}
-                renderItem={(msg: NatsMessage) => (
-                  <MessageItem 
-                    msg={msg}
-                    messageDisplayLength={messageDisplayLength}
-                    onViewDetail={handleViewDetail}
-                    onCopy={handleCopyMessage}
-                  />
-                )}
-              />
-            )}
-          </div>
+          <MessageList 
+            subscriptionId={activeSubscriptionId!}
+            searchFilter={searchFilter}
+            messageDisplayLength={messageDisplayLength}
+            autoScroll={autoScroll}
+            onAutoScrollChange={handleScrollStateChange}
+            onViewDetail={handleViewDetail}
+            onCopy={handleCopyMessage}
+          />
         </Card>
       )}
 

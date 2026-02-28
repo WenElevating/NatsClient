@@ -389,16 +389,16 @@ body {
 
 .messages-card .ant-card-body {
   flex: 1;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 12px;
+  overflow: hidden;
 }
 
 .message-list {
   flex: 1;
-  overflow: auto;
-  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .message-item {

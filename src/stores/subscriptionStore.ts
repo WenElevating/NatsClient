@@ -5,6 +5,7 @@ import { useSettingsStore } from './settingsStore'
 interface SubscriptionStore {
   subscriptions: Subscription[]
   messages: Map<string, NatsMessage[]>
+  messageVersion: number
   pausedSubscriptions: Set<string>
   searchFilter: string
   savedSubjects: string[]
@@ -27,6 +28,7 @@ const messageCounters = new Map<string, number>()
 export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   subscriptions: [],
   messages: new Map(),
+  messageVersion: 0,
   pausedSubscriptions: new Set(),
   searchFilter: '',
   savedSubjects: [],
@@ -83,7 +85,10 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
         updated.splice(0, updated.length - maxMessages)
       }
       newMessages.set(subscriptionId, updated)
-      return { messages: newMessages }
+      return { 
+        messages: newMessages,
+        messageVersion: state.messageVersion + 1
+      }
     })
   },
 
@@ -92,7 +97,10 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.set(subscriptionId, [])
-      return { messages: newMessages }
+      return { 
+        messages: newMessages,
+        messageVersion: state.messageVersion + 1
+      }
     })
   },
 
