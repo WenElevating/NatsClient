@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { Card, Form, Input, Button, message, InputNumber, Space, Tag, List, Popconfirm, Typography } from 'antd'
+import { Card, Form, Input, Button, message, InputNumber, Space, Tag, List, Typography, Popconfirm } from 'antd'
 import { SendOutlined, ClockCircleOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useConnectionStore } from '../stores'
@@ -196,36 +196,22 @@ const PublishPanel: React.FC = () => {
               >
                 {t('publish.publish')}
               </Button>
-              <Popconfirm
-                title={
-                  <Space direction="vertical">
-                    <span>{t('publish.confirmSchedule', '设置定时发布频率：')}</span>
-                    <Space>
-                      <span>{t('publish.every', '每隔')}</span>
-                      <InputNumber
-                        min={1}
-                        max={86400}
-                        value={intervalSeconds}
-                        onChange={(v) => setIntervalSeconds(v || 1)}
-                        style={{ width: 80 }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <span>{t('publish.seconds', '秒')}</span>
-                    </Space>
-                  </Space>
-                }
-                onConfirm={() => handlePublish(true)}
-                okText={t('publish.startTask', '启动')}
-                cancelText={t('common.cancel')}
+              <Button 
+                icon={<ClockCircleOutlined />}
+                onClick={() => handlePublish(true)}
                 disabled={!isConnected}
               >
-                <Button 
-                  icon={<ClockCircleOutlined />}
-                  disabled={!isConnected}
-                >
-                  {t('publish.scheduled', '定时发布')}
-                </Button>
-              </Popconfirm>
+                {t('publish.scheduled', '定时发布')}
+              </Button>
+              <span>{t('publish.every', '每隔')}</span>
+              <InputNumber
+                min={1}
+                max={86400}
+                value={intervalSeconds}
+                onChange={(v) => setIntervalSeconds(v || 1)}
+                style={{ width: 80 }}
+              />
+              <span>{t('publish.seconds', '秒')}</span>
             </Space>
           </Form.Item>
         </Form>
