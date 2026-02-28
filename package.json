@@ -1,7 +1,7 @@
 {
   "name": "nats-client",
   "private": true,
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0",
   "description": "一个现代化、功能丰富的 NATS 桌面客户端",
   "author": "NATS Client Team",
   "type": "module",
