@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { Card, Form, Input, Button, message, Switch, InputNumber, Space, Tag, List, Popconfirm, Typography } from 'antd'
-import { SendOutlined, ClockCircleOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons'
+import { SendOutlined, ClockCircleOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useConnectionStore } from '../stores'
 import type { PublishOptions } from '../types/nats'
@@ -8,13 +8,14 @@ import type { PublishOptions } from '../types/nats'
 const { TextArea } = Input
 const { Text } = Typography
 
-interface ScheduledMessage {
+interface ScheduledTask {
   id: string
   subject: string
   payload: string
   headers?: Record<string, string>
-  delaySeconds: number
-  remainingSeconds: number
+  intervalSeconds: number
+  count: number
+  isRunning: boolean
   createdAt: Date
 }
 
@@ -24,21 +25,16 @@ const PublishPanel: React.FC = () => {
   const { connectionState } = useConnectionStore()
   const [loading, setLoading] = useState(false)
   const [scheduledEnabled, setScheduledEnabled] = useState(false)
-  const [delaySeconds, setDelaySeconds] = useState(10)
-  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>([])
+  const [intervalSeconds, setIntervalSeconds] = useState(1)
+  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([])
   const timersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   const isConnected = connectionState.status === 'connected'
 
   const executePublish = useCallback(async (options: PublishOptions) => {
     const result = await window.nats.publish(options)
-    if (result.success) {
-      message.success(t('publish.publishSuccess'))
-    } else {
-      message.error(`${t('common.failed')}: ${result.error}`)
-    }
     return result
-  }, [t])
+  }, [])
 
   const handlePublish = async () => {
     if (!isConnected) {
@@ -54,50 +50,43 @@ const PublishPanel: React.FC = () => {
         headers: values.headers ? JSON.parse(values.headers) : undefined
       }
 
-      if (scheduledEnabled && delaySeconds > 0) {
-        const scheduledId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-        const scheduledMsg: ScheduledMessage = {
-          id: scheduledId,
+      if (scheduledEnabled && intervalSeconds > 0) {
+        const taskId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const task: ScheduledTask = {
+          id: taskId,
           subject: options.subject,
           payload: options.payload,
           headers: options.headers,
-          delaySeconds,
-          remainingSeconds: delaySeconds,
+          intervalSeconds,
+          count: 0,
+          isRunning: true,
           createdAt: new Date()
         }
         
-        setScheduledMessages(prev => [...prev, scheduledMsg])
-        message.success(t('publish.scheduledSuccess', `消息已加入定时发布队列，将在 ${delaySeconds} 秒后发布`))
+        setScheduledTasks(prev => [...prev, task])
+        message.success(t('publish.taskStarted', '定时发布任务已启动'))
         form.resetFields(['payload', 'headers'])
 
-        const timer = setTimeout(async () => {
-          await executePublish(options)
-          setScheduledMessages(prev => prev.filter(m => m.id !== scheduledId))
-          timersRef.current.delete(scheduledId)
-        }, delaySeconds * 1000)
-        
-        timersRef.current.set(scheduledId, timer)
-
-        const countdownTimer = setInterval(() => {
-          setScheduledMessages(prev => prev.map(m => {
-            if (m.id === scheduledId) {
-              const newRemaining = m.remainingSeconds - 1
-              if (newRemaining <= 0) {
-                clearInterval(countdownTimer)
-              }
-              return { ...m, remainingSeconds: Math.max(0, newRemaining) }
+        const timer = setInterval(async () => {
+          const result = await executePublish(options)
+          setScheduledTasks(prev => prev.map(t => {
+            if (t.id === taskId) {
+              return { ...t, count: t.count + 1 }
             }
-            return m
+            return t
           }))
-        }, 1000)
-
-        setTimeout(() => clearInterval(countdownTimer), delaySeconds * 1000)
+        }, intervalSeconds * 1000)
+        
+        timersRef.current.set(taskId, timer)
       } else {
         setLoading(true)
         const result = await executePublish(options)
         setLoading(false)
         if (result.success) {
+          message.success(t('publish.publishSuccess'))
           form.resetFields(['payload', 'headers'])
+        } else {
+          message.error(`${t('common.failed')}: ${result.error}`)
         }
       }
     } catch (error) {
@@ -108,21 +97,66 @@ const PublishPanel: React.FC = () => {
     }
   }
 
-  const handleCancelScheduled = (id: string) => {
-    const timer = timersRef.current.get(id)
-    if (timer) {
-      clearTimeout(timer)
-      timersRef.current.delete(id)
+  const handleToggleTask = (id: string) => {
+    const task = scheduledTasks.find(t => t.id === id)
+    if (!task) return
+
+    if (task.isRunning) {
+      const timer = timersRef.current.get(id)
+      if (timer) {
+        clearInterval(timer)
+        timersRef.current.delete(id)
+      }
+      setScheduledTasks(prev => prev.map(t => {
+        if (t.id === id) {
+          return { ...t, isRunning: false }
+        }
+        return t
+      }))
+      message.info(t('publish.taskPaused', '任务已暂停'))
+    } else {
+      const options: PublishOptions = {
+        subject: task.subject,
+        payload: task.payload,
+        headers: task.headers
+      }
+      
+      const timer = setInterval(async () => {
+        await executePublish(options)
+        setScheduledTasks(prev => prev.map(t => {
+          if (t.id === id) {
+            return { ...t, count: t.count + 1 }
+          }
+          return t
+        }))
+      }, task.intervalSeconds * 1000)
+      
+      timersRef.current.set(id, timer)
+      setScheduledTasks(prev => prev.map(t => {
+        if (t.id === id) {
+          return { ...t, isRunning: true }
+        }
+        return t
+      }))
+      message.success(t('publish.taskResumed', '任务已恢复'))
     }
-    setScheduledMessages(prev => prev.filter(m => m.id !== id))
-    message.info(t('publish.scheduledCancelled', '定时发布已取消'))
   }
 
-  const handleCancelAll = () => {
-    timersRef.current.forEach(timer => clearTimeout(timer))
+  const handleDeleteTask = (id: string) => {
+    const timer = timersRef.current.get(id)
+    if (timer) {
+      clearInterval(timer)
+      timersRef.current.delete(id)
+    }
+    setScheduledTasks(prev => prev.filter(t => t.id !== id))
+    message.info(t('publish.taskDeleted', '任务已删除'))
+  }
+
+  const handleStopAll = () => {
+    timersRef.current.forEach(timer => clearInterval(timer))
     timersRef.current.clear()
-    setScheduledMessages([])
-    message.info(t('publish.scheduledCancelled', '定时发布已取消'))
+    setScheduledTasks(prev => prev.map(t => ({ ...t, isRunning: false })))
+    message.info(t('publish.allTasksStopped', '所有任务已停止'))
   }
 
   return (
@@ -130,15 +164,15 @@ const PublishPanel: React.FC = () => {
       title={t('publish.title')} 
       className="panel-card"
       extra={
-        scheduledMessages.length > 0 && (
+        scheduledTasks.some(t => t.isRunning) && (
           <Popconfirm
-            title={t('publish.confirmCancelAll', '确定取消所有定时发布？')}
-            onConfirm={handleCancelAll}
+            title={t('publish.confirmStopAll', '确定停止所有定时任务？')}
+            onConfirm={handleStopAll}
             okText={t('common.confirm')}
             cancelText={t('common.cancel')}
           >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              {t('publish.cancelAll', '取消全部')}
+            <Button size="small" danger icon={<PauseCircleOutlined />}>
+              {t('publish.stopAll', '停止全部')}
             </Button>
           </Popconfirm>
         )
@@ -179,14 +213,15 @@ const PublishPanel: React.FC = () => {
               />
               {scheduledEnabled && (
                 <>
+                  <span>{t('publish.every', '每隔')}</span>
                   <InputNumber
                     min={1}
                     max={86400}
-                    value={delaySeconds}
-                    onChange={(v) => setDelaySeconds(v || 10)}
-                    style={{ width: 100 }}
+                    value={intervalSeconds}
+                    onChange={(v) => setIntervalSeconds(v || 1)}
+                    style={{ width: 80 }}
                   />
-                  <span>{t('publish.seconds', '秒后发布')}</span>
+                  <span>{t('publish.seconds', '秒发布一次')}</span>
                 </>
               )}
             </Space>
@@ -201,40 +236,59 @@ const PublishPanel: React.FC = () => {
             loading={loading}
             disabled={!isConnected}
           >
-            {scheduledEnabled ? t('publish.schedulePublish', '定时发布') : t('publish.publish')}
+            {scheduledEnabled ? t('publish.startTask', '启动定时任务') : t('publish.publish')}
           </Button>
         </Form.Item>
       </Form>
 
-      {scheduledMessages.length > 0 && (
+      {scheduledTasks.length > 0 && (
         <>
           <div style={{ marginTop: 16, marginBottom: 8 }}>
-            <Tag color="blue">{t('publish.scheduledQueue', '定时发布队列')} ({scheduledMessages.length})</Tag>
+            <Tag color="blue">{t('publish.taskList', '定时任务列表')} ({scheduledTasks.length})</Tag>
           </div>
           <List
             size="small"
-            dataSource={scheduledMessages}
+            dataSource={scheduledTasks}
             renderItem={(item) => (
               <List.Item
                 actions={[
                   <Button 
-                    key="cancel"
+                    key="toggle"
                     type="text" 
                     size="small"
-                    danger
-                    icon={<CloseOutlined />}
-                    onClick={() => handleCancelScheduled(item.id)}
+                    icon={item.isRunning ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+                    onClick={() => handleToggleTask(item.id)}
+                    style={{ color: item.isRunning ? undefined : '#52c41a' }}
                   >
-                    {t('common.cancel')}
-                  </Button>
+                    {item.isRunning ? t('publish.pause', '暂停') : t('publish.resume', '恢复')}
+                  </Button>,
+                  <Popconfirm
+                    key="delete"
+                    title={t('publish.confirmDelete', '确定删除此任务？')}
+                    onConfirm={() => handleDeleteTask(item.id)}
+                    okText={t('common.confirm')}
+                    cancelText={t('common.cancel')}
+                  >
+                    <Button 
+                      type="text" 
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                    >
+                      {t('common.delete')}
+                    </Button>
+                  </Popconfirm>
                 ]}
               >
                 <List.Item.Meta
                   title={
                     <Space>
-                      <ClockCircleOutlined />
+                      <ClockCircleOutlined style={{ color: item.isRunning ? '#52c41a' : '#999' }} />
                       <span>{item.subject}</span>
-                      <Tag color="orange">{item.remainingSeconds}s</Tag>
+                      <Tag color={item.isRunning ? 'green' : 'default'}>
+                        {t('publish.every', '每隔')}{item.intervalSeconds}s
+                      </Tag>
+                      <Tag color="blue">{t('publish.sent', '已发送')}: {item.count}</Tag>
                     </Space>
                   }
                   description={
