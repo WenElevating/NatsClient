@@ -13,11 +13,11 @@ import type { NatsClientPlugin, MessageRendererProps, PluginPanelProps } from '.
 
 const { Text } = Typography
 
-type VideoCodec = 'h264' | 'h265' | 'vp8' | 'vp9' | 'av1'
+type VideoCodec = 'h264' | 'h265' | 'vp8' | 'vp9' | 'av1' | 'auto'
 
 interface VideoStreamConfig {
   subject: string
-  codec: VideoCodec
+  codec?: VideoCodec
   autoPlay: boolean
   lowLatency: boolean
 }
@@ -31,14 +31,17 @@ const CODEC_OPTIONS = [
   { value: 'h264', label: 'H.264 (AVC)' },
   { value: 'h265', label: 'H.265 (HEVC)' },
   { value: 'vp9', label: 'VP9' },
-  { value: 'av1', label: 'AV1' }
+  { value: 'av1', label: 'AV1' },
+  { value: 'auto', label: '自动检测' }
 ]
 
 const CODEC_MIME: Record<VideoCodec, string> = {
   h264: 'video/mp4; codecs="avc1.42E01E"',
   h265: 'video/mp4; codecs="hev1.6.L120.90"',
+  vp8: 'video/webm; codecs="vp8"',
   vp9: 'video/webm; codecs="vp09.00.10.08"',
-  av1: 'video/mp4; codecs="av01.0.01M.08"'
+  av1: 'video/mp4; codecs="av01.0.01M.08"',
+  auto: 'video/mp4; codecs="avc1.42E01E"'
 }
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
@@ -55,7 +58,7 @@ class SimpleVideoDecoder {
   private onStatusChange?: (status: DecoderStatus) => void
   private status: DecoderStatus = 'idle'
   private frameBuffer: VideoFrame[] = []
-  private targetFps = 30
+  private detectedCodec: VideoCodec | null = null
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -76,6 +79,10 @@ class SimpleVideoDecoder {
 
   getStatus(): DecoderStatus {
     return this.status
+  }
+
+  getDetectedCodec(): VideoCodec | null {
+    return this.detectedCodec
   }
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -109,39 +116,47 @@ class SimpleVideoDecoder {
   }
 
   private async initWebCodecs(): Promise<boolean> {
-    const codecString = CODEC_MIME[this.config.codec]
-    if (!codecString) return false
+    const codecsToTry = this.config.codec === 'auto' 
+      ? ['h264', 'h265', 'vp9', 'av1'] as VideoCodec[]
+      : [this.config.codec] as VideoCodec[]
     
-    try {
-      const support = await VideoDecoder.isConfigSupported({
-        codec: codecString,
-        optimizeForLatency: true
-      })
+    for (const codec of codecsToTry) {
+      const codecString = CODEC_MIME[codec]
+      if (!codecString) continue
+      
+      try {
+        const support = await VideoDecoder.isConfigSupported({
+          codec: codecString,
+          optimizeForLatency: true
+        })
 
-      if (!support.supported) {
-        console.error(`Codec ${codecString} not supported`)
-        return false
-      }
+        if (support.supported) {
+          console.log(`Codec ${codec} supported`)
+          
+          this.decoder = new VideoDecoder({
+            output: (frame) => this.handleFrame(frame),
+            error: (e) => {
+              console.error('VideoDecoder error:', e)
+              this.setStatus('error')
+            }
+          })
 
-      this.decoder = new VideoDecoder({
-        output: (frame) => this.handleFrame(frame),
-        error: (e) => {
-          console.error('VideoDecoder error:', e)
-          this.setStatus('error')
+          this.decoder.configure({
+            codec: codecString,
+            optimizeForLatency: true,
+            hardwareAcceleration: 'prefer-hardware'
+          })
+
+          this.detectedCodec = codec
+          return true
         }
-      })
-
-      this.decoder.configure({
-        codec: codecString,
-        optimizeForLatency: true,
-        hardwareAcceleration: 'prefer-hardware'
-      })
-
-      return true
-    } catch (e) {
-      console.error('initWebCodecs error:', e)
-      return false
+      } catch (e) {
+        console.error(`Codec ${codec} test failed:`, e)
+      }
     }
+    
+    console.error('No supported codec found')
+    return false
   }
 
   private handleFrame(frame: VideoFrame): void {
@@ -401,7 +416,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     }
     
     const decoder = new SimpleVideoDecoder({
-      codec,
+      codec: codec === 'auto' ? 'h264' : codec,
       format: 'annexb'
     })
     
@@ -411,11 +426,16 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     const success = await decoder.init(canvasRef.current)
     if (success) {
       decoderRef.current = decoder
+      const detectedCodec = decoder.getDetectedCodec()
+      if (codec === 'auto' && detectedCodec) {
+        message.success(`已订阅 ${subject} (检测到 ${detectedCodec.toUpperCase()})`)
+      } else {
+        message.success(`已订阅 ${subject}`)
+      }
       setSubscriptionStatus('subscribed')
-      message.success(`已订阅 ${subject}`)
     } else {
       setSubscriptionStatus('error')
-      message.error('解码器初始化失败')
+      message.error('解码器初始化失败，请尝试其他编码格式')
     }
   }, [webCodecsSupported, stopStream])
 
@@ -531,14 +551,14 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   if (activeStream === stream.subject) {
                     stopStream()
                   } else {
-                    startStream(stream.subject, stream.codec)
+                    startStream(stream.subject, stream.codec || 'auto')
                   }
                 }}
               >
                 <Space>
                   <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
                   <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
-                  <Tag>{stream.codec.toUpperCase()}</Tag>
+                  <Tag>{(stream.codec || 'auto').toUpperCase()}</Tag>
                 </Space>
                 <Space>
                   {activeStream === stream.subject && subscriptionStatus === 'subscribed' && (
@@ -566,6 +586,11 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           <Space>
             <Text>播放器</Text>
             {activeStream && <Tag color="blue">{activeStream}</Tag>}
+            {activeStream && decoderRef.current && (
+              <Tag color="purple">
+                检测: {decoderRef.current.getDetectedCodec()?.toUpperCase() || 'N/A'}
+              </Tag>
+            )}
           </Space>
         }
         size="small"
