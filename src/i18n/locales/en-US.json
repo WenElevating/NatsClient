@@ -352,5 +352,24 @@
     "subtitle": "An unknown error occurred",
     "retry": "Retry",
     "reload": "Reload Application"
+  },
+  "plugin": {
+    "title": "Plugins",
+    "settings": {
+      "title": "Plugin Settings",
+      "noPlugins": "No plugins",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "error": "Error",
+      "activateFailed": "Activation failed",
+      "deactivateFailed": "Deactivation failed"
+    },
+    "market": {
+      "title": "Plugin Market",
+      "install": "Install",
+      "installed": "Installed",
+      "update": "Update",
+      "uninstall": "Uninstall"
+    }
   }
 }
