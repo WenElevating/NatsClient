@@ -59,6 +59,7 @@ class VideoDecoderManager {
   private onStatsUpdate?: (stats: { fps: number; frameCount: number; latency: number }) => void
   private onStatusChange?: (status: DecoderStatus) => void
   private status: DecoderStatus = 'idle'
+  private isFirstFrame = true
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -130,7 +131,6 @@ class VideoDecoderManager {
         output: (frame) => this.handleFrame(frame),
         error: (e) => {
           console.error('VideoDecoder error:', e)
-          this.setStatus('error')
         }
       })
 
@@ -140,14 +140,6 @@ class VideoDecoderManager {
         hardwareAcceleration: 'prefer-hardware'
       })
 
-      const emptyChunk = new EncodedVideoChunk({
-        type: 'key',
-        timestamp: performance.now() * 1000,
-        data: new Uint8Array(0)
-      })
-      
-      this.decoder.decode(emptyChunk)
-      
       return true
     } catch (e) {
       console.error('initWebCodecs error:', e)
@@ -198,23 +190,35 @@ class VideoDecoderManager {
     try {
       const chunk = new Uint8Array(data)
       
+      const isKeyFrame = this.isFirstFrame || this.checkForKeyFrame(chunk)
+      this.isFirstFrame = false
+      
       const encodedChunk = new EncodedVideoChunk({
-        type: 'delta',
+        type: isKeyFrame ? 'key' : 'delta',
         timestamp: performance.now() * 1000,
         data: chunk
       })
-
-      if (this.decoder.decodeQueueSize > 5) {
-        this.decoder.flush()
-      }
 
       this.decoder.decode(encodedChunk)
       return { success: true }
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e)
-      console.error('Decode error:', errorMsg)
       return { success: false, error: errorMsg }
     }
+  }
+
+  private checkForKeyFrame(data: Uint8Array): boolean {
+    if (this.config.codec === 'h264') {
+      for (let i = 0; i < data.length - 4; i++) {
+        if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
+          const nalType = data[i + 4] & 0x1F
+          if (nalType === 5 || nalType === 7 || nalType === 8) {
+            return true
+          }
+        }
+      }
+    }
+    return false
   }
 
   getStats(): { fps: number; frameCount: number; latency: number } {
@@ -231,6 +235,7 @@ class VideoDecoderManager {
     if (this.decoder) {
       this.decoder.reset()
       this.frameCount = 0
+      this.isFirstFrame = true
       this.setStatus('ready')
     }
   }
