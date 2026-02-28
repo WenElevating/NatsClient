@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
+import React, { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { Card, Input, Button, Space, Tag, Typography, Empty, Select, message, Popconfirm, Tooltip, Modal } from 'antd'
 import { 
   PlusOutlined, 
@@ -12,82 +12,14 @@ import {
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
-import { useConnectionStore, useSubscriptionStore, useSettingsStore } from '../stores'
+import { useConnectionStore, useSubscriptionStore, useSettingsStore, usePluginStore } from '../stores'
 import type { Subscription, NatsMessage } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
+import PluginMessageRenderer from './PluginMessageRenderer'
 
 const { Text } = Typography
 
 const VISIBLE_COUNT = 50
-
-interface MessageRowProps {
-  msg: NatsMessage
-  messageDisplayLength: number
-  onViewDetail: (msg: NatsMessage) => void
-  onCopy: (payload: string) => void
-}
-
-const MessageRow = memo(({ msg, messageDisplayLength, onViewDetail, onCopy }: MessageRowProps) => {
-  const display = useMemo(() => {
-    const formatted = msg.isJson ? formatJson(msg.payload) : msg.payload
-    if (formatted.length <= messageDisplayLength) {
-      return formatted
-    }
-    return formatted.substring(0, messageDisplayLength) + '...'
-  }, [msg.payload, msg.isJson, messageDisplayLength])
-
-  const truncated = msg.payload.length > messageDisplayLength
-
-  return (
-    <div 
-      className="message-item"
-      style={{ 
-        padding: '8px 4px',
-        borderBottom: '1px solid var(--color-border)'
-      }}
-    >
-      <div className="message-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <Space size={4}>
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            {formatTimestamp(msg.timestamp)}
-          </Text>
-          <Tag color="blue" style={{ fontSize: 11, padding: '0 4px', margin: 0 }}>{msg.subject}</Tag>
-        </Space>
-        <Space size={0}>
-          {truncated && (
-            <Button 
-              type="text" 
-              size="small"
-              icon={<EyeOutlined style={{ fontSize: 12 }} />}
-              onClick={() => onViewDetail(msg)}
-              style={{ padding: '0 4px' }}
-            />
-          )}
-          <Button 
-            type="text" 
-            size="small"
-            icon={<CopyOutlined style={{ fontSize: 12 }} />}
-            onClick={() => onCopy(msg.payload)}
-            style={{ padding: '0 4px' }}
-          />
-        </Space>
-      </div>
-      <div 
-        style={{ 
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-          padding: '4px 8px',
-          fontSize: 11,
-          fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
-          background: 'var(--color-bg-container)',
-          borderRadius: 4
-        }}
-      >
-        {display}
-      </div>
-    </div>
-  )
-})
 
 interface MessageListProps {
   subscriptionId: string
@@ -150,12 +82,14 @@ const MessageList = memo(({
         />
       ) : (
         messages.map((msg) => (
-          <MessageRow 
+          <PluginMessageRenderer 
             key={msg.id}
-            msg={msg}
+            message={msg}
+            subscriptionId={subscriptionId}
+            isPreview={true}
             messageDisplayLength={messageDisplayLength}
-            onViewDetail={onViewDetail}
-            onCopy={onCopy}
+            onViewDetail={() => onViewDetail(msg)}
+            onCopy={() => onCopy(msg.payload)}
           />
         ))
       )}

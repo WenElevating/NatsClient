@@ -369,7 +369,21 @@
       "install": "Install",
       "installed": "Installed",
       "update": "Update",
-      "uninstall": "Uninstall"
+      "uninstall": "Uninstall",
+      "available": "available",
+      "searchPlaceholder": "Search plugins...",
+      "noResults": "No matching plugins found",
+      "enable": "Enable",
+      "disable": "Disable",
+      "author": "Author",
+      "downloads": "Downloads",
+      "rating": "Rating",
+      "installSuccess": "installed successfully",
+      "installFailed": "Installation failed",
+      "uninstallSuccess": "Uninstalled successfully",
+      "uninstallFailed": "Uninstall failed",
+      "confirmUninstall": "Confirm Uninstall",
+      "confirmUninstallDesc": "Are you sure you want to uninstall this plugin?"
     }
   }
 }

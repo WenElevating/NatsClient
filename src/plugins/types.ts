@@ -1,5 +1,18 @@
 import type { NatsMessage, PublishOptions, Subscription } from '../types/nats'
 
+export interface PluginPermissions {
+  network?: boolean
+  filesystem?: 'read' | 'write' | 'read-write' | false
+  subscriptions?: boolean
+  publishing?: boolean
+  systemCommands?: boolean
+}
+
+export interface SandboxOptions {
+  permissions: PluginPermissions
+  timeout?: number
+}
+
 export interface NatsClientPlugin {
   id: string
   name: string

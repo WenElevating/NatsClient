@@ -5,7 +5,8 @@ import {
   EyeOutlined, 
   MessageOutlined, 
   DatabaseOutlined,
-  KeyOutlined
+  KeyOutlined,
+  AppstoreOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { 
@@ -18,8 +19,12 @@ import {
   TitleBar,
   KvStorePanel
 } from '../components'
-import { useConnectionStore, useSettingsStore, useLogStore } from '../stores'
+import PluginMarket from './PluginMarket'
+import PluginSettings from './PluginSettings'
+import { useConnectionStore, useSettingsStore, useLogStore, usePluginStore } from '../stores'
 import { darkTheme, lightTheme } from '../themes'
+import { pluginManager } from '../plugins'
+import jsonFormatterPlugin from '../plugins/builtin/json-formatter'
 
 const { Header, Sider, Content } = Layout
 
@@ -33,11 +38,25 @@ const MainLayout: React.FC = () => {
   const { connectionState } = useConnectionStore()
   const { loadSettings, theme: currentTheme } = useSettingsStore()
   const { addLog } = useLogStore()
+  const { loadPlugins, registerPlugin, activatePlugin } = usePluginStore()
 
   useEffect(() => {
     loadSettings()
     addLog('info', t('app.started', '应用程序已启动'))
   }, [loadSettings, addLog, t])
+
+  useEffect(() => {
+    const initPlugins = async () => {
+      try {
+        await registerPlugin(jsonFormatterPlugin)
+        await activatePlugin(jsonFormatterPlugin.id)
+        await loadPlugins()
+      } catch (error) {
+        console.error('Failed to initialize plugins:', error)
+      }
+    }
+    initPlugins()
+  }, [])
 
   useEffect(() => {
     const statusMessages: Record<string, string> = {
@@ -137,6 +156,21 @@ const MainLayout: React.FC = () => {
         </span>
       ),
       children: <KvStorePanel />
+    },
+    {
+      key: 'plugins',
+      label: (
+        <span className="tab-label">
+          <AppstoreOutlined />
+          <span>{t('plugin.title')}</span>
+        </span>
+      ),
+      children: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <PluginMarket />
+          <PluginSettings />
+        </div>
+      )
     }
   ]
 

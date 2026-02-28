@@ -369,7 +369,21 @@
       "install": "安装",
       "installed": "已安装",
       "update": "更新",
-      "uninstall": "卸载"
+      "uninstall": "卸载",
+      "available": "个可用",
+      "searchPlaceholder": "搜索插件...",
+      "noResults": "未找到匹配的插件",
+      "enable": "启用",
+      "disable": "禁用",
+      "author": "作者",
+      "downloads": "下载",
+      "rating": "评分",
+      "installSuccess": "安装成功",
+      "installFailed": "安装失败",
+      "uninstallSuccess": "卸载成功",
+      "uninstallFailed": "卸载失败",
+      "confirmUninstall": "确认卸载",
+      "confirmUninstallDesc": "确定要卸载此插件吗？"
     }
   }
 }
