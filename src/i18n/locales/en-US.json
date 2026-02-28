@@ -48,9 +48,20 @@
     "headers": "Headers (JSON format)",
     "publish": "Publish",
     "publishSuccess": "Published successfully",
-    "subjectRequired": "Please enter Subject",
-    "payloadRequired": "Please enter Payload",
-    "notConnected": "Not connected to NATS server"
+    "subjectRequired": "Please enter subject",
+    "payloadRequired": "Please enter payload",
+    "payloadPlaceholder": "Enter JSON or text message",
+    "notConnected": "Not connected to NATS server",
+    "scheduled": "Scheduled Publish",
+    "on": "On",
+    "off": "Off",
+    "seconds": "seconds",
+    "schedulePublish": "Schedule Publish",
+    "scheduledSuccess": "Message added to scheduled queue",
+    "scheduledCancelled": "Scheduled publish cancelled",
+    "scheduledQueue": "Scheduled Queue",
+    "confirmCancelAll": "Cancel all scheduled publishes?",
+    "cancelAll": "Cancel All"
   },
   "subscribe": {
     "title": "Subscribe",

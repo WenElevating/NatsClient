@@ -50,7 +50,18 @@
     "publishSuccess": "发布成功",
     "subjectRequired": "请输入主题",
     "payloadRequired": "请输入消息内容",
-    "notConnected": "未连接到 NATS 服务器"
+    "payloadPlaceholder": "输入 JSON 或文本消息",
+    "notConnected": "未连接到 NATS 服务器",
+    "scheduled": "定时发布",
+    "on": "开",
+    "off": "关",
+    "seconds": "秒后发布",
+    "schedulePublish": "定时发布",
+    "scheduledSuccess": "消息已加入定时发布队列",
+    "scheduledCancelled": "定时发布已取消",
+    "scheduledQueue": "定时发布队列",
+    "confirmCancelAll": "确定取消所有定时发布？",
+    "cancelAll": "取消全部"
   },
   "subscribe": {
     "title": "订阅",
