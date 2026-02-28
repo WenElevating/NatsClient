@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { Layout, Tabs, ConfigProvider, theme } from 'antd'
+import { Layout, Tabs, ConfigProvider, theme, message } from 'antd'
 import { 
   SendOutlined, 
   EyeOutlined, 
@@ -21,7 +21,12 @@ import {
 import { useConnectionStore, useSettingsStore, useLogStore } from '../stores'
 import { darkTheme, lightTheme } from '../themes'
 
-const { Sider, Content, Header } = Layout
+const { Header, Sider, Content } = Layout
+
+message.config({
+  duration: 3,
+  maxCount: 3
+})
 
 const MainLayout: React.FC = () => {
   const { t } = useTranslation()
