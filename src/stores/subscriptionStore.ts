@@ -22,6 +22,8 @@ interface SubscriptionStore {
   getSavedSubjects: () => string[]
 }
 
+const messageCounters = new Map<string, number>()
+
 export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   subscriptions: [],
   messages: new Map(),
@@ -34,6 +36,7 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
       if (state.subscriptions.some(s => s.id === subscription.id)) {
         return state
       }
+      messageCounters.set(subscription.id, 0)
       return {
         subscriptions: [...state.subscriptions, subscription],
         messages: new Map(state.messages).set(subscription.id, [])
@@ -42,6 +45,7 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   },
 
   removeSubscription: (id) => {
+    messageCounters.delete(id)
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.delete(id)
@@ -67,6 +71,9 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     const { pausedSubscriptions } = get()
     if (pausedSubscriptions.has(subscriptionId)) return
 
+    const counter = messageCounters.get(subscriptionId) || 0
+    messageCounters.set(subscriptionId, counter + 1)
+
     set((state) => {
       const maxMessages = useSettingsStore.getState().maxMessagesPerSubscription
       const newMessages = new Map(state.messages)
@@ -81,6 +88,7 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   },
 
   clearMessages: (subscriptionId) => {
+    messageCounters.set(subscriptionId, 0)
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.set(subscriptionId, [])
@@ -132,8 +140,11 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
 }))
 
 window.nats.onMessage((data) => {
-  useSubscriptionStore.getState().addMessage(data.subscriptionId, data.message)
-  useSubscriptionStore.getState().updateSubscription(data.subscriptionId, {
-    messageCount: (useSubscriptionStore.getState().subscriptions.find(s => s.id === data.subscriptionId)?.messageCount || 0) + 1
+  const store = useSubscriptionStore.getState()
+  store.addMessage(data.subscriptionId, data.message)
+  
+  const counter = messageCounters.get(data.subscriptionId) || 0
+  store.updateSubscription(data.subscriptionId, {
+    messageCount: counter
   })
 })

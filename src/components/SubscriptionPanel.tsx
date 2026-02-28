@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
 import { Card, Input, Button, Space, List, Tag, Typography, Empty, Select, message, Popconfirm, Tooltip, Modal } from 'antd'
 import { 
   PlusOutlined, 
@@ -16,6 +16,78 @@ import type { Subscription, NatsMessage } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
 
 const { Text } = Typography
+
+interface MessageItemProps {
+  msg: NatsMessage
+  messageDisplayLength: number
+  onViewDetail: (msg: NatsMessage) => void
+  onCopy: (payload: string) => void
+}
+
+const MessageItem = memo(({ msg, messageDisplayLength, onViewDetail, onCopy }: MessageItemProps) => {
+  const truncatePayload = (payload: string, isJson: boolean): { display: string; truncated: boolean } => {
+    const formatted = isJson ? formatJson(payload) : payload
+    if (formatted.length <= messageDisplayLength) {
+      return { display: formatted, truncated: false }
+    }
+    return { display: formatted.substring(0, messageDisplayLength) + '...', truncated: true }
+  }
+
+  const { display, truncated } = truncatePayload(msg.payload, msg.isJson)
+
+  return (
+    <List.Item className="message-item">
+      <div style={{ width: '100%', padding: '0 4px' }}>
+        <div className="message-header">
+          <Space>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {formatTimestamp(msg.timestamp)}
+            </Text>
+            <Tag color="blue">{msg.subject}</Tag>
+            {msg.replyTo && (
+              <Tag color="purple">Reply: {msg.replyTo}</Tag>
+            )}
+          </Space>
+          <Space size={0}>
+            {truncated && (
+              <Tooltip title="查看详情">
+                <Button 
+                  type="text" 
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => onViewDetail(msg)}
+                />
+              </Tooltip>
+            )}
+            <Tooltip title="复制">
+              <Button 
+                type="text" 
+                size="small"
+                icon={<CopyOutlined />}
+                onClick={() => onCopy(msg.payload)}
+              />
+            </Tooltip>
+          </Space>
+        </div>
+        <div 
+          className="message-payload"
+          style={{ 
+            marginBottom: 0, 
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            padding: '8px 12px',
+            fontSize: 12,
+            fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+            background: 'var(--color-bg-container)',
+            borderRadius: 4
+          }}
+        >
+          {display}
+        </div>
+      </div>
+    </List.Item>
+  )
+})
 
 const SubscriptionPanel: React.FC = () => {
   const { t } = useTranslation()
@@ -131,15 +203,12 @@ const SubscriptionPanel: React.FC = () => {
     setDetailModalVisible(true)
   }
 
-  const truncatePayload = (payload: string, isJson: boolean): { display: string; truncated: boolean } => {
-    const formatted = isJson ? formatJson(payload) : payload
-    if (formatted.length <= messageDisplayLength) {
-      return { display: formatted, truncated: false }
-    }
-    return { display: formatted.substring(0, messageDisplayLength) + '...', truncated: true }
-  }
-
-  const activeMessages = activeSubscriptionId ? getFilteredMessages(activeSubscriptionId) : []
+  const activeMessages = useMemo(() => {
+    if (!activeSubscriptionId) return []
+    const msgs = getFilteredMessages(activeSubscriptionId)
+    return msgs.slice(-500)
+  }, [activeSubscriptionId, getFilteredMessages])
+  
   const activeSubscription = subscriptions.find(s => s.id === activeSubscriptionId)
   const isPaused = activeSubscriptionId ? pausedSubscriptions.has(activeSubscriptionId) : false
 
@@ -288,61 +357,14 @@ const SubscriptionPanel: React.FC = () => {
             ) : (
               <List
                 dataSource={activeMessages}
-                renderItem={(msg: NatsMessage) => {
-                  const { display, truncated } = truncatePayload(msg.payload, msg.isJson)
-                  return (
-                    <List.Item className="message-item">
-                      <div style={{ width: '100%', padding: '0 4px' }}>
-                        <div className="message-header">
-                          <Space>
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                              {formatTimestamp(msg.timestamp)}
-                            </Text>
-                            <Tag color="blue">{msg.subject}</Tag>
-                            {msg.replyTo && (
-                              <Tag color="purple">Reply: {msg.replyTo}</Tag>
-                            )}
-                          </Space>
-                          <Space size={0}>
-                            {truncated && (
-                              <Tooltip title={t('subscribe.viewDetail')}>
-                                <Button 
-                                  type="text" 
-                                  size="small"
-                                  icon={<EyeOutlined />}
-                                  onClick={() => handleViewDetail(msg)}
-                                />
-                              </Tooltip>
-                            )}
-                            <Tooltip title={t('subscribe.copy')}>
-                              <Button 
-                                type="text" 
-                                size="small"
-                                icon={<CopyOutlined />}
-                                onClick={() => handleCopyMessage(msg.payload)}
-                              />
-                            </Tooltip>
-                          </Space>
-                        </div>
-                        <div 
-                          className="message-payload"
-                          style={{ 
-                            marginBottom: 0, 
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-all',
-                            padding: '8px 12px',
-                            fontSize: 12,
-                            fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
-                            background: 'var(--color-bg-container)',
-                            borderRadius: 4
-                          }}
-                        >
-                          {display}
-                        </div>
-                      </div>
-                    </List.Item>
-                  )
-                }}
+                renderItem={(msg: NatsMessage) => (
+                  <MessageItem 
+                    msg={msg}
+                    messageDisplayLength={messageDisplayLength}
+                    onViewDetail={handleViewDetail}
+                    onCopy={handleCopyMessage}
+                  />
+                )}
               />
             )}
           </div>
