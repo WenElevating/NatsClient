@@ -173,6 +173,7 @@ const SubscriptionPanel: React.FC = () => {
     pausedSubscriptions, 
     searchFilter,
     savedSubjects,
+    messageCounters,
     addSubscription, 
     removeSubscription, 
     togglePause, 
@@ -186,6 +187,7 @@ const SubscriptionPanel: React.FC = () => {
       pausedSubscriptions: state.pausedSubscriptions,
       searchFilter: state.searchFilter,
       savedSubjects: state.savedSubjects,
+      messageCounters: state.messageCounters,
       addSubscription: state.addSubscription,
       removeSubscription: state.removeSubscription,
       togglePause: state.togglePause,
@@ -306,6 +308,7 @@ const SubscriptionPanel: React.FC = () => {
   
   const activeSubscription = subscriptions.find(s => s.id === activeSubscriptionId)
   const isPaused = activeSubscriptionId ? pausedSubscriptions.has(activeSubscriptionId) : false
+  const activeMessageCount = activeSubscriptionId ? (messageCounters.get(activeSubscriptionId) || 0) : 0
 
   const subscriptionOptions = subscriptions.map(sub => ({
     value: sub.id,
@@ -314,7 +317,7 @@ const SubscriptionPanel: React.FC = () => {
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {sub.subject}
         </span>
-        <Tag style={{ marginLeft: 8, flexShrink: 0 }}>{sub.messageCount}</Tag>
+        <Tag style={{ marginLeft: 8, flexShrink: 0 }}>{messageCounters.get(sub.id) || 0}</Tag>
       </div>
     )
   }))
@@ -380,7 +383,7 @@ const SubscriptionPanel: React.FC = () => {
               <Tag color={isPaused ? 'orange' : 'green'}>
                 {isPaused ? t('subscribe.paused', '已暂停') : t('subscribe.receiving', '接收中')}
               </Tag>
-              <Tag>{activeSubscription.messageCount} {t('subscribe.messagesCount', '条消息')}</Tag>
+              <Tag>{activeMessageCount} {t('subscribe.messagesCount', '条消息')}</Tag>
             </Space>
           }
           extra={

@@ -5,6 +5,7 @@ import { useSettingsStore } from './settingsStore'
 interface SubscriptionStore {
   subscriptions: Subscription[]
   messages: Map<string, NatsMessage[]>
+  messageCounters: Map<string, number>
   pausedSubscriptions: Set<string>
   searchFilter: string
   savedSubjects: string[]
@@ -20,11 +21,10 @@ interface SubscriptionStore {
   removeSavedSubject: (subject: string) => void
 }
 
-const messageCounters = new Map<string, number>()
-
 export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   subscriptions: [],
   messages: new Map(),
+  messageCounters: new Map(),
   pausedSubscriptions: new Set(),
   searchFilter: '',
   savedSubjects: [],
@@ -34,26 +34,30 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
       if (state.subscriptions.some(s => s.id === subscription.id)) {
         return state
       }
-      messageCounters.set(subscription.id, 0)
       const newMessages = new Map(state.messages)
       newMessages.set(subscription.id, [])
+      const newCounters = new Map(state.messageCounters)
+      newCounters.set(subscription.id, 0)
       return {
         subscriptions: [...state.subscriptions, subscription],
-        messages: newMessages
+        messages: newMessages,
+        messageCounters: newCounters
       }
     })
   },
 
   removeSubscription: (id) => {
-    messageCounters.delete(id)
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.delete(id)
+      const newCounters = new Map(state.messageCounters)
+      newCounters.delete(id)
       const newPaused = new Set(state.pausedSubscriptions)
       newPaused.delete(id)
       return {
         subscriptions: state.subscriptions.filter(s => s.id !== id),
         messages: newMessages,
+        messageCounters: newCounters,
         pausedSubscriptions: newPaused
       }
     })
@@ -68,11 +72,10 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   },
 
   addMessage: (subscriptionId, message) => {
-    const { pausedSubscriptions } = get()
+    const { pausedSubscriptions, messageCounters } = get()
     if (pausedSubscriptions.has(subscriptionId)) return
 
     const counter = (messageCounters.get(subscriptionId) || 0) + 1
-    messageCounters.set(subscriptionId, counter)
 
     set((state) => {
       const maxMessages = useSettingsStore.getState().maxMessagesPerSubscription
@@ -84,23 +87,26 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
       }
       newMessages.set(subscriptionId, updated)
       
-      const newSubscriptions = state.subscriptions.map(s => 
-        s.id === subscriptionId ? { ...s, messageCount: counter } : s
-      )
+      const newCounters = new Map(state.messageCounters)
+      newCounters.set(subscriptionId, counter)
       
       return { 
         messages: newMessages,
-        subscriptions: newSubscriptions
+        messageCounters: newCounters
       }
     })
   },
 
   clearMessages: (subscriptionId) => {
-    messageCounters.set(subscriptionId, 0)
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.set(subscriptionId, [])
-      return { messages: newMessages }
+      const newCounters = new Map(state.messageCounters)
+      newCounters.set(subscriptionId, 0)
+      return { 
+        messages: newMessages,
+        messageCounters: newCounters
+      }
     })
   },
 
