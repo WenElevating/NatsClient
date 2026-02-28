@@ -13,7 +13,7 @@ interface PluginStore {
   unregisterPlugin: (pluginId: string) => Promise<void>
 }
 
-export const usePluginStore = create<PluginStore>((set, get) => ({
+export const usePluginStore = create<PluginStore>((set) => ({
   plugins: [],
   loading: false,
 

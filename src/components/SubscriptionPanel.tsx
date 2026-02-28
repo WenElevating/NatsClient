@@ -6,13 +6,11 @@ import {
   PauseCircleOutlined, 
   PlayCircleOutlined,
   ClearOutlined,
-  SearchOutlined,
-  CopyOutlined,
-  EyeOutlined
+  SearchOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
-import { useConnectionStore, useSubscriptionStore, useSettingsStore, usePluginStore } from '../stores'
+import { useConnectionStore, useSubscriptionStore, useSettingsStore } from '../stores'
 import type { Subscription, NatsMessage } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
 import PluginMessageRenderer from './PluginMessageRenderer'

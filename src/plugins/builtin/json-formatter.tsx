@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react'
 import type { NatsClientPlugin, MessageRendererProps } from '../types'
-import { formatJson } from '../../utils/format'
 
 const JsonRenderer: React.FC<MessageRendererProps> = ({ message, isPreview, onViewDetail }) => {
   const display = useMemo(() => {

@@ -12,7 +12,6 @@ class PluginSandbox {
   private pluginId: string
   private permissions: PluginPermissions
   private timeout: number
-  private allowedDomains: Set<string> = new Set()
   private rateLimits: Map<string, { count: number; resetTime: number }> = new Map()
 
   constructor(pluginId: string, options?: Partial<SandboxOptions>) {

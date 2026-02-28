@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Card, List, Button, Tag, Space, Typography, Input, Empty, Spin, message, Modal } from 'antd'
-import { SearchOutlined, DownloadOutlined, DeleteOutlined, CheckCircleOutlined, SyncOutlined } from '@ant-design/icons'
+import { DownloadOutlined, DeleteOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { usePluginStore } from '../stores'
 import type { PluginInfo } from '../plugins/types'
 
-const { Text, Title } = Typography
+const { Text } = Typography
 const { Search } = Input
 
 interface MarketPlugin extends PluginInfo {
@@ -15,69 +15,14 @@ interface MarketPlugin extends PluginInfo {
   category?: string
 }
 
-const mockMarketPlugins: MarketPlugin[] = [
-  {
-    id: 'com.natsclient.video-player',
-    name: 'Video Player',
-    version: '1.0.0',
-    description: '播放视频流消息，支持多种视频格式',
-    author: 'NatsClient Team',
-    enabled: false,
-    active: false,
-    hasError: false,
-    downloads: 1234,
-    rating: 4.5,
-    category: 'media'
-  },
-  {
-    id: 'com.natsclient.image-viewer',
-    name: 'Image Viewer',
-    version: '1.0.0',
-    description: '图片查看器，支持预览和缩放',
-    author: 'NatsClient Team',
-    enabled: false,
-    active: false,
-    hasError: false,
-    downloads: 987,
-    rating: 4.2,
-    category: 'media'
-  },
-  {
-    id: 'com.natsclient.chart-renderer',
-    name: 'Chart Renderer',
-    version: '1.0.0',
-    description: '图表渲染器，自动识别数据并渲染图表',
-    author: 'NatsClient Team',
-    enabled: false,
-    active: false,
-    hasError: false,
-    downloads: 567,
-    rating: 4.0,
-    category: 'data'
-  },
-  {
-    id: 'com.natsclient.protobuf-decoder',
-    name: 'Protobuf Decoder',
-    version: '1.0.0',
-    description: 'Protobuf 消息解码器',
-    author: 'Community',
-    enabled: false,
-    active: false,
-    hasError: false,
-    downloads: 345,
-    rating: 3.8,
-    category: 'codec'
-  }
-]
+const mockMarketPlugins: MarketPlugin[] = []
 
 const PluginMarket: React.FC = () => {
   const { t } = useTranslation()
-  const { plugins: installedPlugins, activatePlugin, deactivatePlugin, registerPlugin } = usePluginStore()
+  const { plugins: installedPlugins, activatePlugin, deactivatePlugin } = usePluginStore()
   const [loading, setLoading] = useState(false)
   const [searchText, setSearchText] = useState('')
-  const [marketPlugins, setMarketPlugins] = useState<MarketPlugin[]>(mockMarketPlugins)
-
-  const installedIds = new Set(installedPlugins.map(p => p.id))
+  const [marketPlugins] = useState<MarketPlugin[]>(mockMarketPlugins)
 
   const filteredPlugins = marketPlugins.filter(plugin => 
     plugin.name.toLowerCase().includes(searchText.toLowerCase()) ||

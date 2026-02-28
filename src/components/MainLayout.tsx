@@ -23,8 +23,8 @@ import PluginMarket from './PluginMarket'
 import PluginSettings from './PluginSettings'
 import { useConnectionStore, useSettingsStore, useLogStore, usePluginStore } from '../stores'
 import { darkTheme, lightTheme } from '../themes'
-import { pluginManager } from '../plugins'
 import jsonFormatterPlugin from '../plugins/builtin/json-formatter'
+import videoPlayerPlugin from '../plugins/builtin/video-player'
 
 const { Header, Sider, Content } = Layout
 
@@ -50,6 +50,8 @@ const MainLayout: React.FC = () => {
       try {
         await registerPlugin(jsonFormatterPlugin)
         await activatePlugin(jsonFormatterPlugin.id)
+        await registerPlugin(videoPlayerPlugin)
+        await activatePlugin(videoPlayerPlugin.id)
         await loadPlugins()
       } catch (error) {
         console.error('Failed to initialize plugins:', error)

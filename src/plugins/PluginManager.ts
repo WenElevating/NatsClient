@@ -8,7 +8,7 @@ import type {
   MessageRendererProps,
   PublishInterceptor
 } from './types'
-import type { NatsMessage, PublishOptions, Subscription } from '../types/nats'
+import type { NatsMessage, PublishOptions } from '../types/nats'
 import { message } from 'antd'
 
 interface MessageHandlerEntry {
@@ -200,16 +200,16 @@ class PluginManagerImpl {
   }
 
   async interceptPublish(options: PublishOptions): Promise<PublishOptions | null> {
-    let result = options
+    let result: PublishOptions | null = options
 
     for (const entry of this.publishInterceptors) {
-      if (entry.pattern.test(options.subject)) {
+      if (entry.pattern.test(options.subject) && result !== null) {
         try {
           const context = {
             subject: options.subject,
             timestamp: new Date()
           }
-          result = await entry.interceptor(result!, context)
+          result = await entry.interceptor(result, context)
           if (result === null) {
             return null
           }
