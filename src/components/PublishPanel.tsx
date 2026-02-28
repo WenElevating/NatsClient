@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { Card, Form, Input, Button, Space, Typography, message } from 'antd'
+import { Card, Form, Input, Button, message } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useConnectionStore } from '../stores'
 import type { PublishOptions } from '../types/nats'
 
 const { TextArea } = Input
-const { Text } = Typography
 
 const PublishPanel: React.FC = () => {
   const { t } = useTranslation()

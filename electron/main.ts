@@ -1,21 +1,14 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { setupIpcHandlers, cleanupIpcHandlers } from './ipc/index'
 import { setupStorageIpcHandlers } from './ipc/storage'
 import { windowStateManager } from './store/WindowStateManager'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-process.env.APP_ROOT = path.join(__dirname, '..')
-
-export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
+const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
-process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
-
-let win: BrowserWindow | null
+let win: BrowserWindow | null = null
 
 function createWindow() {
   const windowState = windowStateManager.getState()
@@ -39,8 +32,18 @@ function createWindow() {
     titleBarStyle: 'hidden',
   })
 
+  if (windowState.isMaximized) {
+    win.maximize()
+  }
+
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', (new Date).toLocaleString())
+  })
+
+  win.on('close', () => {
+    if (win) {
+      windowStateManager.saveState(win)
+    }
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -49,16 +52,6 @@ function createWindow() {
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
-
-  if (windowState.isMaximized) {
-    win.maximize()
-  }
-
-  win.on('close', () => {
-    if (win) {
-      windowStateManager.saveState(win)
-    }
-  })
 
   setupIpcHandlers(win)
   setupStorageIpcHandlers()
@@ -87,11 +80,11 @@ function setupWindowControlHandlers() {
   })
 }
 
-app.on('window-all-closed', async () => {
+app.on('window-all-closed', () => {
+  win = null
   cleanupIpcHandlers()
   if (process.platform !== 'darwin') {
     app.quit()
-    win = null
   }
 })
 
@@ -101,8 +94,12 @@ app.on('activate', () => {
   }
 })
 
-app.on('before-quit', async () => {
+app.on('before-quit', () => {
   cleanupIpcHandlers()
 })
 
 app.whenReady().then(createWindow)
+
+if (process.platform !== 'darwin') {
+  app.setAppUserModelId('nats-client')
+}

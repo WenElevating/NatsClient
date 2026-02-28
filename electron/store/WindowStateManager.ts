@@ -18,12 +18,11 @@ const MIN_HEIGHT = 700
 
 export class WindowStateManager {
   private statePath: string
-  private state: WindowState
+  private state: WindowState | null = null
 
   constructor() {
     const userDataPath = app.getPath('userData')
     this.statePath = path.join(userDataPath, STATE_FILE)
-    this.state = this.loadState()
   }
 
   private loadState(): WindowState {
@@ -65,10 +64,10 @@ export class WindowStateManager {
       const bounds = win.getBounds()
       
       const state: WindowState = {
-        x: isMaximized ? this.state.x : bounds.x,
-        y: isMaximized ? this.state.y : bounds.y,
-        width: isMaximized ? this.state.width : bounds.width,
-        height: isMaximized ? this.state.height : bounds.height,
+        x: isMaximized ? (this.state?.x ?? bounds.x) : bounds.x,
+        y: isMaximized ? (this.state?.y ?? bounds.y) : bounds.y,
+        width: isMaximized ? (this.state?.width ?? bounds.width) : bounds.width,
+        height: isMaximized ? (this.state?.height ?? bounds.height) : bounds.height,
         isMaximized
       }
       
@@ -80,7 +79,10 @@ export class WindowStateManager {
   }
 
   getState(): WindowState {
-    return { ...this.state }
+    if (!this.state) {
+      this.state = this.loadState()
+    }
+    return { ...this.state! }
   }
 
   applyState(win: BrowserWindow): void {

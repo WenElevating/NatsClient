@@ -50,7 +50,6 @@ const TitleBar = () => {
   const handleToggleLanguage = async () => {
     const newLang = i18n.language === 'zh-CN' ? 'en-US' : 'zh-CN'
     await i18n.changeLanguage(newLang)
-    await updateSettings({ language: newLang })
   }
 
   const getStatusColor = () => {
