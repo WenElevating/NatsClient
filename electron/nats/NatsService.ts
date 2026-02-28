@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events'
 import * as nats from 'nats'
 import type { NatsConnection, Subscription as NatsSubscription, JetStreamManager } from 'nats'
-import type { ConnectionConfig, ConnectionState, NatsMessage, Subscription, PublishOptions, RequestOptions, RequestResult, JetStreamInfo, ConsumerInfo, StoredMessage, KvBucketInfo, KvEntry } from '../../src/types/nats'
+import { RetentionPolicy, StorageType, AckPolicy, DeliverPolicy, ReplayPolicy } from 'nats'
+import type { ConnectionConfig, ConnectionState, NatsMessage, Subscription, PublishOptions, RequestOptions, RequestResult, JetStreamInfo, ConsumerInfo, StoredMessage, KvBucketInfo, KvEntry, StreamConfigOptions, ConsumerConfigOptions } from '../../src/types/nats'
 import { v4 as uuidv4 } from 'uuid'
 
 export class NatsService extends EventEmitter {
@@ -308,6 +309,125 @@ export class NatsService extends EventEmitter {
     }
 
     return result
+  }
+
+  async createStream(options: StreamConfigOptions): Promise<JetStreamInfo> {
+    if (!this.jsManager) {
+      throw new Error('JetStream not available')
+    }
+
+    const retentionMap: Record<string, nats.RetentionPolicy> = {
+      'limits': RetentionPolicy.Limits,
+      'interest': RetentionPolicy.Interest,
+      'workqueue': RetentionPolicy.Workqueue
+    }
+
+    const storageMap: Record<string, nats.StorageType> = {
+      'file': StorageType.File,
+      'memory': StorageType.Memory
+    }
+
+    try {
+      const streamInfo = await this.jsManager.streams.add({
+        name: options.name,
+        subjects: options.subjects,
+        retention: options.retention ? retentionMap[options.retention] : undefined,
+        max_consumers: options.maxConsumers,
+        max_msgs: options.maxMsgs,
+        max_bytes: options.maxBytes,
+        max_age: options.maxAge,
+        storage: options.storage ? storageMap[options.storage] : undefined,
+        description: options.description
+      })
+
+      return {
+        name: streamInfo.config.name,
+        subjects: streamInfo.config.subjects,
+        retention: streamInfo.config.retention,
+        maxConsumers: streamInfo.config.max_consumers,
+        maxMsgs: streamInfo.config.max_msgs,
+        maxBytes: streamInfo.config.max_bytes,
+        maxAge: streamInfo.config.max_age,
+        messages: streamInfo.state.messages,
+        bytes: streamInfo.state.bytes
+      }
+    } catch (error) {
+      throw new Error(`Failed to create stream: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async deleteStream(streamName: string): Promise<void> {
+    if (!this.jsManager) {
+      throw new Error('JetStream not available')
+    }
+
+    try {
+      await this.jsManager.streams.delete(streamName)
+    } catch (error) {
+      throw new Error(`Failed to delete stream: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async createConsumer(options: ConsumerConfigOptions): Promise<ConsumerInfo> {
+    if (!this.jsManager) {
+      throw new Error('JetStream not available')
+    }
+
+    const ackPolicyMap: Record<string, nats.AckPolicy> = {
+      'none': AckPolicy.None,
+      'all': AckPolicy.All,
+      'explicit': AckPolicy.Explicit
+    }
+
+    const deliverPolicyMap: Record<string, nats.DeliverPolicy> = {
+      'all': DeliverPolicy.All,
+      'last': DeliverPolicy.Last,
+      'new': DeliverPolicy.New,
+      'by_start_sequence': DeliverPolicy.StartSequence,
+      'by_start_time': DeliverPolicy.StartTime
+    }
+
+    const replayPolicyMap: Record<string, nats.ReplayPolicy> = {
+      'instant': ReplayPolicy.Instant,
+      'original': ReplayPolicy.Original
+    }
+
+    try {
+      const consumerInfo = await this.jsManager.consumers.add(options.streamName, {
+        name: options.name,
+        ack_policy: options.ackPolicy ? ackPolicyMap[options.ackPolicy] : undefined,
+        max_deliver: options.maxDeliver,
+        ack_wait: options.ackWait,
+        deliver_subject: options.deliverSubject,
+        deliver_policy: options.deliverPolicy ? deliverPolicyMap[options.deliverPolicy] : undefined,
+        filter_subject: options.filterSubject,
+        replay_policy: options.replayPolicy ? replayPolicyMap[options.replayPolicy] : undefined
+      })
+
+      return {
+        name: consumerInfo.name,
+        streamName: options.streamName,
+        ackPolicy: consumerInfo.config.ack_policy,
+        deliverSubject: consumerInfo.config.deliver_subject,
+        maxDeliver: consumerInfo.config.max_deliver || 1,
+        ackWait: consumerInfo.config.ack_wait || 0,
+        pending: consumerInfo.num_pending
+      }
+    } catch (error) {
+      throw new Error(`Failed to create consumer: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async deleteConsumer(streamName: string, consumerName: string): Promise<void> {
+    if (!this.jsManager) {
+      throw new Error('JetStream not available')
+    }
+
+    try {
+      await this.jsManager.consumers.delete(streamName, consumerName)
+    } catch (error) {
+      throw new Error(`Failed to delete consumer: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   async getJetStreamConsumers(streamName: string): Promise<ConsumerInfo[]> {

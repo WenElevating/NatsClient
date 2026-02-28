@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { natsService } from '../nats/NatsService'
-import type { ConnectionConfig, PublishOptions, RequestOptions } from '../../src/types/nats'
+import type { ConnectionConfig, PublishOptions, RequestOptions, StreamConfigOptions, ConsumerConfigOptions } from '../../src/types/nats'
 
 export const IPC_CHANNELS = {
   NATS_CONNECT: 'nats:connect',
@@ -20,6 +20,10 @@ export const IPC_CHANNELS = {
   NATS_JS_FETCH_MESSAGE: 'nats:js:fetch-message',
   NATS_JS_ACK: 'nats:js:ack',
   NATS_JS_NAK: 'nats:js:nak',
+  NATS_JS_CREATE_STREAM: 'nats:js:create-stream',
+  NATS_JS_DELETE_STREAM: 'nats:js:delete-stream',
+  NATS_JS_CREATE_CONSUMER: 'nats:js:create-consumer',
+  NATS_JS_DELETE_CONSUMER: 'nats:js:delete-consumer',
   NATS_KV_GET_BUCKETS: 'nats:kv:get-buckets',
   NATS_KV_GET_KEYS: 'nats:kv:get-keys',
   NATS_KV_GET_ENTRY: 'nats:kv:get-entry',
@@ -265,6 +269,42 @@ export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.NATS_KV_DELETE_BUCKET, async (_event, bucketName: string) => {
     try {
       await natsService.deleteKvBucket(bucketName)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_JS_CREATE_STREAM, async (_event, options: StreamConfigOptions) => {
+    try {
+      const stream = await natsService.createStream(options)
+      return { success: true, stream }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_JS_DELETE_STREAM, async (_event, streamName: string) => {
+    try {
+      await natsService.deleteStream(streamName)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_JS_CREATE_CONSUMER, async (_event, options: ConsumerConfigOptions) => {
+    try {
+      const consumer = await natsService.createConsumer(options)
+      return { success: true, consumer }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_JS_DELETE_CONSUMER, async (_event, streamName: string, consumerName: string) => {
+    try {
+      await natsService.deleteConsumer(streamName, consumerName)
       return { success: true }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }

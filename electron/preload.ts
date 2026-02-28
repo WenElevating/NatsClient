@@ -1,5 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
-import type { ConnectionConfig, ConnectionState, PublishOptions, RequestOptions, NatsMessage, Subscription, JetStreamInfo, ConsumerInfo, StoredMessage, AppSettings, KvBucketInfo, KvEntry } from '../src/types/nats'
+import type { ConnectionConfig, ConnectionState, PublishOptions, RequestOptions, NatsMessage, Subscription, JetStreamInfo, ConsumerInfo, StoredMessage, AppSettings, KvBucketInfo, KvEntry, StreamConfigOptions, ConsumerConfigOptions } from '../src/types/nats'
 
 const IPC_CHANNELS = {
   NATS_CONNECT: 'nats:connect',
@@ -16,6 +16,10 @@ const IPC_CHANNELS = {
   NATS_JS_FETCH_MESSAGE: 'nats:js:fetch-message',
   NATS_JS_ACK: 'nats:js:ack',
   NATS_JS_NAK: 'nats:js:nak',
+  NATS_JS_CREATE_STREAM: 'nats:js:create-stream',
+  NATS_JS_DELETE_STREAM: 'nats:js:delete-stream',
+  NATS_JS_CREATE_CONSUMER: 'nats:js:create-consumer',
+  NATS_JS_DELETE_CONSUMER: 'nats:js:delete-consumer',
   NATS_KV_GET_BUCKETS: 'nats:kv:get-buckets',
   NATS_KV_GET_KEYS: 'nats:kv:get-keys',
   NATS_KV_GET_ENTRY: 'nats:kv:get-entry',
@@ -72,6 +76,10 @@ export interface NatsApi {
   getKvHistory: (bucketName: string, key: string) => Promise<{ success: boolean; history?: KvEntry[]; error?: string }>
   createKvBucket: (bucketName: string, options?: { description?: string; ttl?: number; history?: number }) => Promise<{ success: boolean; error?: string }>
   deleteKvBucket: (bucketName: string) => Promise<{ success: boolean; error?: string }>
+  createStream: (options: StreamConfigOptions) => Promise<{ success: boolean; stream?: JetStreamInfo; error?: string }>
+  deleteStream: (streamName: string) => Promise<{ success: boolean; error?: string }>
+  createConsumer: (options: ConsumerConfigOptions) => Promise<{ success: boolean; consumer?: ConsumerInfo; error?: string }>
+  deleteConsumer: (streamName: string, consumerName: string) => Promise<{ success: boolean; error?: string }>
   onMessage: (callback: (data: { subscriptionId: string; message: NatsMessage }) => void) => () => void
   onConnectionState: (callback: (state: ConnectionState) => void) => () => void
   onPublishSuccess: (callback: (data: { subject: string; size: number }) => void) => () => void
@@ -117,6 +125,10 @@ const natsApi: NatsApi = {
   getKvHistory: (bucketName, key) => ipcRenderer.invoke(IPC_CHANNELS.NATS_KV_GET_HISTORY, bucketName, key),
   createKvBucket: (bucketName, options) => ipcRenderer.invoke(IPC_CHANNELS.NATS_KV_CREATE_BUCKET, bucketName, options),
   deleteKvBucket: (bucketName) => ipcRenderer.invoke(IPC_CHANNELS.NATS_KV_DELETE_BUCKET, bucketName),
+  createStream: (options) => ipcRenderer.invoke(IPC_CHANNELS.NATS_JS_CREATE_STREAM, options),
+  deleteStream: (streamName) => ipcRenderer.invoke(IPC_CHANNELS.NATS_JS_DELETE_STREAM, streamName),
+  createConsumer: (options) => ipcRenderer.invoke(IPC_CHANNELS.NATS_JS_CREATE_CONSUMER, options),
+  deleteConsumer: (streamName, consumerName) => ipcRenderer.invoke(IPC_CHANNELS.NATS_JS_DELETE_CONSUMER, streamName, consumerName),
   
   onMessage: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { subscriptionId: string; message: NatsMessage }) => callback(data)

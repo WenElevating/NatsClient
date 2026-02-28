@@ -79,6 +79,32 @@ export interface JetStreamInfo {
   maxAge: number
   messages: number
   bytes: number
+  config?: StreamConfigOptions
+}
+
+export interface StreamConfigOptions {
+  name: string
+  subjects: string[]
+  retention?: 'limits' | 'workqueue' | 'interest'
+  maxConsumers?: number
+  maxMsgs?: number
+  maxBytes?: number
+  maxAge?: number
+  replicas?: number
+  storage?: 'file' | 'memory'
+  description?: string
+}
+
+export interface ConsumerConfigOptions {
+  name: string
+  streamName: string
+  ackPolicy?: 'none' | 'all' | 'explicit'
+  maxDeliver?: number
+  ackWait?: number
+  deliverSubject?: string
+  deliverPolicy?: 'all' | 'last' | 'new' | 'by_start_sequence' | 'by_start_time'
+  filterSubject?: string
+  replayPolicy?: 'instant' | 'original'
 }
 
 export interface ConsumerInfo {
