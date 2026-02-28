@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Layout, Tabs, ConfigProvider, theme } from 'antd'
 import { 
   SendOutlined, 
@@ -7,6 +7,7 @@ import {
   DatabaseOutlined,
   KeyOutlined
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { 
   ConnectionList, 
   PublishPanel, 
@@ -23,25 +24,26 @@ import { darkTheme, lightTheme } from '../themes'
 const { Sider, Content, Header } = Layout
 
 const MainLayout: React.FC = () => {
+  const { t } = useTranslation()
   const { connectionState } = useConnectionStore()
   const { loadSettings, theme: currentTheme } = useSettingsStore()
   const { addLog } = useLogStore()
 
   useEffect(() => {
     loadSettings()
-    addLog('info', '应用程序已启动')
-  }, [loadSettings, addLog])
+    addLog('info', t('app.started', '应用程序已启动'))
+  }, [loadSettings, addLog, t])
 
   useEffect(() => {
     const statusMessages: Record<string, string> = {
-      connected: '已连接到 NATS 服务器',
-      disconnected: '已断开连接',
-      connecting: '正在连接...',
-      reconnecting: '正在重连...',
-      error: `连接错误: ${connectionState.error || '未知错误'}`
+      connected: t('app.connectedLog', '已连接到 NATS 服务器'),
+      disconnected: t('app.disconnectedLog', '已断开连接'),
+      connecting: t('app.connectingLog', '正在连接...'),
+      reconnecting: t('app.reconnectingLog', '正在重连...'),
+      error: `${t('app.error')}: ${connectionState.error || t('app.unknownError', '未知错误')}`
     }
     addLog(connectionState.status === 'error' ? 'error' : 'info', statusMessages[connectionState.status])
-  }, [connectionState.status, connectionState.error, addLog])
+  }, [connectionState.status, connectionState.error, addLog, t])
 
   const themeConfig = useMemo(() => {
     const isDark = currentTheme === 'dark'
@@ -86,7 +88,7 @@ const MainLayout: React.FC = () => {
       label: (
         <span className="tab-label">
           <SendOutlined />
-          <span>发布</span>
+          <span>{t('publish.title')}</span>
         </span>
       ),
       children: <PublishPanel />
@@ -96,7 +98,7 @@ const MainLayout: React.FC = () => {
       label: (
         <span className="tab-label">
           <EyeOutlined />
-          <span>订阅</span>
+          <span>{t('subscribe.title')}</span>
         </span>
       ),
       children: <SubscriptionPanel />
@@ -106,7 +108,7 @@ const MainLayout: React.FC = () => {
       label: (
         <span className="tab-label">
           <MessageOutlined />
-          <span>请求</span>
+          <span>{t('request.title')}</span>
         </span>
       ),
       children: <RequestPanel />

@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Card, List, Button, Space, Tag, Typography, Empty } from 'antd'
 import { ClearOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { useLogStore } from '../stores'
 import type { LogEntry } from '../stores/logStore'
 import { formatTimestamp } from '../utils/format'
@@ -15,6 +16,7 @@ const levelColors: Record<LogEntry['level'], string> = {
 }
 
 const LogPanel: React.FC = () => {
+  const { t } = useTranslation()
   const { logs, clearLogs } = useLogStore()
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -26,7 +28,7 @@ const LogPanel: React.FC = () => {
 
   return (
     <Card 
-      title="实时日志" 
+      title={t('logs.title')} 
       className="panel-card log-panel"
       size="small"
       extra={
@@ -36,14 +38,14 @@ const LogPanel: React.FC = () => {
           onClick={clearLogs}
           size="small"
         >
-          清空
+          {t('logs.clear')}
         </Button>
       }
     >
       <div className="log-list" ref={listRef}>
         {logs.length === 0 ? (
           <Empty 
-            description="暂无日志" 
+            description={t('logs.noLogs')} 
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             style={{ marginTop: 40 }}
           />

@@ -1,5 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
 import { Result, Button } from 'antd'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   children: ReactNode
@@ -33,6 +34,8 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public render() {
+    const { t } = this.props
+
     if (this.state.hasError) {
       return (
         <div style={{ 
@@ -44,15 +47,15 @@ class ErrorBoundary extends Component<Props, State> {
         }}>
           <Result
             status="error"
-            title="应用程序出错"
-            subTitle={this.state.error?.message || '发生了未知错误'}
+            title={t('errorBoundary.title')}
+            subTitle={this.state.error?.message || t('errorBoundary.subtitle')}
             style={{ background: 'transparent' }}
             extra={[
               <Button key="reset" onClick={this.handleReset}>
-                重试
+                {t('errorBoundary.retry')}
               </Button>,
               <Button key="reload" type="primary" onClick={this.handleReload}>
-                重新加载应用
+                {t('errorBoundary.reload')}
               </Button>
             ]}
           />
@@ -64,4 +67,9 @@ class ErrorBoundary extends Component<Props, State> {
   }
 }
 
-export default ErrorBoundary
+const ErrorBoundaryWrapper: React.FC<Props> = (props) => {
+  const { t } = useTranslation()
+  return <ErrorBoundary {...props} t={t} />
+}
+
+export default ErrorBoundaryWrapper

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Modal, Form, Input, InputNumber, Switch } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { ConnectionConfig } from '../types/nats'
 import { useConnectionStore, useSettingsStore } from '../stores'
 
@@ -13,6 +14,7 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
   const [form] = Form.useForm()
   const { addConnection } = useConnectionStore()
   const { defaultServer, defaultPort } = useSettingsStore()
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (visible) {
@@ -48,12 +50,12 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
 
   return (
     <Modal
-      title={connection ? '编辑连接' : '新建连接'}
+      title={connection ? t('connection.editConnection') : t('connection.newConnection')}
       open={visible}
       onCancel={onClose}
       onOk={handleSubmit}
-      okText="保存"
-      cancelText="取消"
+      okText={t('connection.save')}
+      cancelText={t('connection.cancel')}
       width={500}
       destroyOnClose
     >
@@ -64,52 +66,52 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
       >
         <Form.Item
           name="name"
-          label="连接名称"
-          rules={[{ required: true, message: '请输入连接名称' }]}
+          label={t('connection.connectionName')}
+          rules={[{ required: true, message: t('connection.connectionName') }]}
         >
-          <Input placeholder="例如: 本地开发服务器" />
+          <Input placeholder={t('connection.exampleName')} />
         </Form.Item>
 
         <Form.Item
           name="servers"
-          label="服务器地址"
-          rules={[{ required: true, message: '请输入服务器地址' }]}
+          label={t('connection.server')}
+          rules={[{ required: true, message: t('connection.server') }]}
         >
-          <Input placeholder="例如: localhost 或 nats.example.com" />
+          <Input placeholder={t('connection.exampleServer')} />
         </Form.Item>
 
         <Form.Item
           name="port"
-          label="端口"
-          rules={[{ required: true, message: '请输入端口号' }]}
+          label={t('connection.port')}
+          rules={[{ required: true, message: t('connection.port') }]}
         >
           <InputNumber min={1} max={65535} style={{ width: '100%' }} />
         </Form.Item>
 
         <Form.Item
           name="username"
-          label="用户名"
+          label={t('connection.username')}
         >
-          <Input placeholder="可选" />
+          <Input placeholder={t('connection.optional')} />
         </Form.Item>
 
         <Form.Item
           name="password"
-          label="密码"
+          label={t('connection.password')}
         >
-          <Input.Password placeholder="可选" />
+          <Input.Password placeholder={t('connection.optional')} />
         </Form.Item>
 
         <Form.Item
           name="token"
-          label="Token"
+          label={t('connection.token')}
         >
-          <Input.Password placeholder="可选" />
+          <Input.Password placeholder={t('connection.optional')} />
         </Form.Item>
 
         <Form.Item
           name="tls"
-          label="启用 TLS"
+          label={t('connection.enableTls')}
           valuePropName="checked"
         >
           <Switch />
@@ -117,7 +119,7 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
 
         <Form.Item
           name="autoReconnect"
-          label="自动重连"
+          label={t('connection.autoReconnect')}
           valuePropName="checked"
         >
           <Switch />
@@ -132,14 +134,14 @@ const ConnectionForm: React.FC<ConnectionFormProps> = ({ visible, connection, on
               <>
                 <Form.Item
                   name="maxReconnectAttempts"
-                  label="最大重连次数 (-1 为无限)"
+                  label={t('connection.maxReconnectAttempts')}
                 >
                   <InputNumber min={-1} style={{ width: '100%' }} />
                 </Form.Item>
 
                 <Form.Item
                   name="reconnectTimeWait"
-                  label="重连间隔 (毫秒)"
+                  label={t('connection.reconnectInterval')}
                 >
                   <InputNumber min={100} style={{ width: '100%' }} />
                 </Form.Item>

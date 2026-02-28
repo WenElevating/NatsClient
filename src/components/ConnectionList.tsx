@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Button, Badge, Tooltip, Popconfirm, Typography, Empty, Space } from 'antd'
 import { 
   PlusOutlined, 
@@ -7,6 +7,7 @@ import {
   DisconnectOutlined,
   EditOutlined
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import type { ConnectionConfig, ConnectionStatus } from '../types/nats'
 import { useConnectionStore } from '../stores'
 import ConnectionForm from './ConnectionForm'
@@ -21,15 +22,8 @@ const statusColors: Record<ConnectionStatus, string> = {
   error: 'red'
 }
 
-const statusText: Record<ConnectionStatus, string> = {
-  connected: '已连接',
-  connecting: '连接中',
-  disconnected: '已断开',
-  reconnecting: '重连中',
-  error: '错误'
-}
-
 const ConnectionList: React.FC = () => {
+  const { t } = useTranslation()
   const { 
     connections, 
     activeConnection, 
@@ -47,6 +41,17 @@ const ConnectionList: React.FC = () => {
   useEffect(() => {
     loadConnections()
   }, [loadConnections])
+
+  const getStatusText = (status: ConnectionStatus) => {
+    const statusMap: Record<ConnectionStatus, string> = {
+      connected: t('app.connected'),
+      connecting: t('app.connecting'),
+      disconnected: t('app.disconnected'),
+      reconnecting: t('app.reconnecting'),
+      error: t('app.error')
+    }
+    return statusMap[status]
+  }
 
   const handleConnect = async (connection: ConnectionConfig) => {
     setActiveConnection(connection)
@@ -74,21 +79,21 @@ const ConnectionList: React.FC = () => {
   return (
     <div className="connection-list">
       <div className="connection-list-header">
-        <Text strong style={{ color: '#fff' }}>连接管理</Text>
+        <Text strong style={{ color: '#fff' }}>{t('connection.title')}</Text>
         <Button 
           type="primary" 
           icon={<PlusOutlined />} 
           size="small"
           onClick={() => setFormVisible(true)}
         >
-          新建
+          {t('connection.newConnection')}
         </Button>
       </div>
       
       <div className="connection-list-content">
         {connections.length === 0 ? (
           <Empty 
-            description="暂无连接配置" 
+            description={t('connection.noConnections', '暂无连接配置')}
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             style={{ marginTop: 40 }}
           />
@@ -122,9 +127,8 @@ const ConnectionList: React.FC = () => {
                             alignItems: 'center',
                             height: '16px',
                             color: '#a0a0a0',
-                            
                           }}>
-                            {statusText[status]}
+                            {getStatusText(status)}
                           </span>
                         }
                         style={{ display: 'flex', alignItems: 'center', marginTop: 22, }}
@@ -138,7 +142,7 @@ const ConnectionList: React.FC = () => {
                   <div className="connection-item-actions">
                     <Space size={0}>
                       {isActive && status === 'connected' ? (
-                        <Tooltip title="断开连接">
+                        <Tooltip title={t('connection.disconnect')}>
                           <Button 
                             type="text" 
                             danger 
@@ -148,7 +152,7 @@ const ConnectionList: React.FC = () => {
                           />
                         </Tooltip>
                       ) : (
-                        <Tooltip title="连接">
+                        <Tooltip title={t('connection.connect')}>
                           <Button 
                             type="text" 
                             size="small"
@@ -157,7 +161,7 @@ const ConnectionList: React.FC = () => {
                           />
                         </Tooltip>
                       )}
-                      <Tooltip title="编辑">
+                      <Tooltip title={t('connection.edit')}>
                         <Button 
                           type="text" 
                           size="small"
@@ -166,12 +170,12 @@ const ConnectionList: React.FC = () => {
                         />
                       </Tooltip>
                       <Popconfirm
-                        title="确定删除此连接配置？"
+                        title={t('connection.confirmDelete')}
                         onConfirm={() => handleDelete(item.id)}
-                        okText="确定"
-                        cancelText="取消"
+                        okText={t('common.confirm')}
+                        cancelText={t('common.cancel')}
                       >
-                        <Tooltip title="删除">
+                        <Tooltip title={t('connection.delete')}>
                           <Button 
                             type="text" 
                             danger 
