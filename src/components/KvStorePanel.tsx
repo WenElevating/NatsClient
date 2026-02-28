@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Card, Table, Button, Space, Tag, Typography, Empty, message, Popconfirm, Tooltip, Modal, Form, Input, InputNumber, Popover } from 'antd'
 import { 
   DatabaseOutlined, 
@@ -7,14 +7,14 @@ import {
   DeleteOutlined, 
   HistoryOutlined,
   KeyOutlined,
-  CopyOutlined
+  CopyOutlined,
+  ApiOutlined
 } from '@ant-design/icons'
 import { useConnectionStore } from '../stores'
 import type { KvBucketInfo, KvEntry } from '../types/nats'
-import { formatTimestamp } from '../utils/format'
-import { formatJson } from '../utils/format'
+import { formatTimestamp, formatJson } from '../utils/format'
 
-const { Text } = Typography
+const { Text, Title } = Typography
 
 const KvStorePanel: React.FC = () => {
   const { connectionState } = useConnectionStore()
@@ -23,6 +23,7 @@ const KvStorePanel: React.FC = () => {
   const [keys, setKeys] = useState<string[]>([])
   const [entries, setEntries] = useState<Map<string, KvEntry>>(new Map())
   const [loading, setLoading] = useState(false)
+  const [jsAvailable, setJsAvailable] = useState<boolean | null>(null)
   const [createBucketModalVisible, setCreateBucketModalVisible] = useState(false)
   const [addKeyModalVisible, setAddKeyModalVisible] = useState(false)
   const [historyModalVisible, setHistoryModalVisible] = useState(false)
@@ -32,24 +33,37 @@ const KvStorePanel: React.FC = () => {
 
   const isConnected = connectionState.status === 'connected'
 
-  const loadBuckets = async () => {
-    if (!isConnected) return
+  const checkJetStreamAndLoad = useCallback(async () => {
+    if (!isConnected) {
+      setJsAvailable(null)
+      setBuckets([])
+      return
+    }
     
     setLoading(true)
     const result = await window.nats.getKvBuckets()
-    if (result.success && result.buckets) {
+    if (result.success && result.buckets !== undefined) {
       setBuckets(result.buckets)
+      setJsAvailable(true)
+    } else if (result.error?.includes('JetStream not available')) {
+      setJsAvailable(false)
+      setBuckets([])
     } else {
-      message.error(`加载 Bucket 失败: ${result.error}`)
+      setJsAvailable(false)
+      setBuckets([])
     }
     setLoading(false)
-  }
+  }, [isConnected])
 
   useEffect(() => {
     if (isConnected) {
-      loadBuckets()
+      checkJetStreamAndLoad()
+    } else {
+      setJsAvailable(null)
+      setBuckets([])
+      setSelectedBucket(null)
     }
-  }, [isConnected])
+  }, [isConnected, checkJetStreamAndLoad])
 
   const loadKeys = async (bucketName: string) => {
     const result = await window.nats.getKvKeys(bucketName)
@@ -88,7 +102,7 @@ const KvStorePanel: React.FC = () => {
         message.success('Bucket 创建成功')
         setCreateBucketModalVisible(false)
         createForm.resetFields()
-        loadBuckets()
+        checkJetStreamAndLoad()
       } else {
         message.error(`创建失败: ${result.error}`)
       }
@@ -106,7 +120,7 @@ const KvStorePanel: React.FC = () => {
         setKeys([])
         setEntries(new Map())
       }
-      loadBuckets()
+      checkJetStreamAndLoad()
     } else {
       message.error(`删除失败: ${result.error}`)
     }
@@ -165,6 +179,27 @@ const KvStorePanel: React.FC = () => {
     if (value.length <= 50) return value
     return value.substring(0, 50) + '...'
   }
+
+  const getStatusInfo = () => {
+    if (!isConnected) {
+      return {
+        icon: <ApiOutlined style={{ fontSize: 48, color: '#666' }} />,
+        title: '未连接到 NATS 服务器',
+        description: '请先连接到 NATS 服务器后再使用 KV Store 功能'
+      }
+    }
+    if (jsAvailable === false) {
+      return {
+        icon: <DatabaseOutlined style={{ fontSize: 48, color: '#faad14' }} />,
+        title: 'JetStream 未启用',
+        description: 'KV Store 需要 JetStream 支持。请在 NATS 服务器配置中开启 JetStream'
+      }
+    }
+    return null
+  }
+
+  const statusInfo = getStatusInfo()
+  const showOverlay = statusInfo !== null
 
   const bucketColumns = [
     {
@@ -342,9 +377,9 @@ const KvStorePanel: React.FC = () => {
         <Space>
           <Button 
             icon={<ReloadOutlined />} 
-            onClick={loadBuckets}
+            onClick={checkJetStreamAndLoad}
             loading={loading}
-            disabled={!isConnected}
+            disabled={!isConnected || jsAvailable === false}
           >
             刷新
           </Button>
@@ -352,68 +387,85 @@ const KvStorePanel: React.FC = () => {
             type="primary" 
             icon={<PlusOutlined />}
             onClick={() => setCreateBucketModalVisible(true)}
-            disabled={!isConnected}
+            disabled={!isConnected || jsAvailable === false}
           >
             新建 Bucket
           </Button>
         </Space>
       }
     >
-      {!isConnected ? (
-        <Empty description="请先连接到 NATS 服务器" />
-      ) : buckets.length === 0 ? (
-        <Empty description="暂无 KV Bucket，请新建一个" />
-      ) : (
-        <>
-          <Table 
-            dataSource={buckets} 
-            columns={bucketColumns}
-            rowKey="bucket"
-            pagination={false}
-            size="small"
-            onRow={(record) => ({
-              onClick: () => setSelectedBucket(record.bucket),
-              style: { cursor: 'pointer', backgroundColor: selectedBucket === record.bucket ? 'rgba(24, 144, 255, 0.1)' : undefined }
-            })}
-          />
+      <div className="jetstream-content">
+        {showOverlay && (
+          <div className="jetstream-overlay">
+            <div className="jetstream-overlay-content">
+              {statusInfo.icon}
+              <Title level={5} style={{ margin: '16px 0 8px', color: '#a0a0a0' }}>
+                {statusInfo.title}
+              </Title>
+              <Text type="secondary" style={{ textAlign: 'center', maxWidth: 280 }}>
+                {statusInfo.description}
+              </Text>
+            </div>
+          </div>
+        )}
+        
+        <div className={showOverlay ? 'jetstream-disabled' : ''}>
+          {buckets.length === 0 && !showOverlay ? (
+            <Empty description="暂无 KV Bucket，请新建一个" />
+          ) : (
+            <>
+              <Table 
+                dataSource={buckets} 
+                columns={bucketColumns}
+                rowKey="bucket"
+                pagination={false}
+                size="small"
+                loading={loading && !showOverlay}
+                onRow={(record) => ({
+                  onClick: () => setSelectedBucket(record.bucket),
+                  style: { cursor: 'pointer', backgroundColor: selectedBucket === record.bucket ? 'rgba(24, 144, 255, 0.1)' : undefined }
+                })}
+              />
 
-          {selectedBucket && (
-            <Card 
-              size="small" 
-              title={
-                <Space>
-                  <KeyOutlined />
-                  <span>Keys in {selectedBucket}</span>
-                  <Tag>{keys.length}</Tag>
-                </Space>
-              }
-              extra={
-                <Button 
-                  type="primary" 
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={() => setAddKeyModalVisible(true)}
+              {selectedBucket && (
+                <Card 
+                  size="small" 
+                  title={
+                    <Space>
+                      <KeyOutlined />
+                      <span>Keys in {selectedBucket}</span>
+                      <Tag>{keys.length}</Tag>
+                    </Space>
+                  }
+                  extra={
+                    <Button 
+                      type="primary" 
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => setAddKeyModalVisible(true)}
+                    >
+                      添加 Key
+                    </Button>
+                  }
+                  style={{ marginTop: 16 }}
                 >
-                  添加 Key
-                </Button>
-              }
-              style={{ marginTop: 16 }}
-            >
-              {keys.length === 0 ? (
-                <Empty description="暂无 Key" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              ) : (
-                <Table 
-                  dataSource={keys} 
-                  columns={keyColumns}
-                  rowKey={(key) => key}
-                  pagination={false}
-                  size="small"
-                />
+                  {keys.length === 0 ? (
+                    <Empty description="暂无 Key" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  ) : (
+                    <Table 
+                      dataSource={keys} 
+                      columns={keyColumns}
+                      rowKey={(key) => key}
+                      pagination={false}
+                      size="small"
+                    />
+                  )}
+                </Card>
               )}
-            </Card>
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
 
       <Modal
         title="新建 Bucket"

@@ -521,15 +521,15 @@ export class NatsService extends EventEmitter {
   }
 
   async getKvBuckets(): Promise<KvBucketInfo[]> {
-    if (!this.nc) {
-      throw new Error('Not connected to NATS server')
+    if (!this.jsManager) {
+      throw new Error('JetStream not available')
     }
 
     try {
-      const js = this.nc.jetstream()
+      const js = this.nc!.jetstream()
       const result: KvBucketInfo[] = []
       
-      const streams = await js.streams.list()
+      const streams = await this.jsManager.streams.list()
       for await (const stream of streams) {
         if (stream.config.name.startsWith('KV_')) {
           try {
