@@ -1,46 +1,46 @@
-import React, { useRef, useEffect, useCallback, useState, memo } from 'react'
-import { Button, Space, Select, Typography, Tag } from 'antd'
+import React, { useRef, useEffect, useCallback, useState } from 'react'
+import { Button, Space, Select, Typography, Tag, Input, Form, Card, message, Modal, Tooltip } from 'antd'
 import { 
   PlayCircleOutlined, 
-  PauseCircleOutlined, 
-  FullscreenOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  PlusOutlined,
+  DeleteOutlined
 } from '@ant-design/icons'
-import type { NatsClientPlugin, MessageRendererProps } from '../types'
+import type { NatsClientPlugin, MessageRendererProps, PluginPanelProps } from '../types'
 
 const { Text } = Typography
 
 type VideoCodec = 'h264' | 'h265' | 'vp8' | 'vp9' | 'av1'
-type VideoFormat = 'raw' | 'annexb' | 'avcc'
+
+interface VideoStreamConfig {
+  subject: string
+  codec: VideoCodec
+  autoPlay: boolean
+  lowLatency: boolean
+  bufferSize: number
+}
 
 interface VideoDecoderConfig {
   codec: VideoCodec
-  format: VideoFormat
+  format: string
   width?: number
   height?: number
   framerate?: number
 }
 
-interface VideoPlayerProps extends MessageRendererProps {
-  codec?: VideoCodec
-  autoPlay?: boolean
-  lowLatency?: boolean
-}
-
-const DEFAULT_CODEC_CONFIG: VideoDecoderConfig = {
-  codec: 'h264',
-  format: 'annexb',
-  width: 1280,
-  height: 720,
-  framerate: 30
-}
+const CODEC_OPTIONS = [
+  { value: 'h264', label: 'H.264 (AVC)' },
+  { value: 'h265', label: 'H.265 (HEVC)' },
+  { value: 'vp9', label: 'VP9' },
+  { value: 'av1', label: 'AV1' }
+]
 
 const CODEC_SUPPORT: Record<VideoCodec, string[]> = {
-  h264: ['avc1.42001E', 'avc1.4D001E', 'avc1.64001E', 'avc1.42002A', 'avc1.4D002A', 'avc1.64002A'],
-  h265: ['hev1.1.6.L93.B0', 'hev1.2.4.L93.B0', 'hev1.1.6.L120.B0'],
+  h264: ['avc1.42001E', 'avc1.4D001E', 'avc1.64001E'],
+  h265: ['hev1.1.6.L93.B0', 'hev1.2.4.L93.B0'],
   vp8: ['vp8'],
-  vp9: ['vp09.00.10.08', 'vp09.01.10.08', 'vp09.02.10.08'],
-  av1: ['av01.0.01M.08', 'av01.0.04M.08', 'av01.0.08M.08']
+  vp9: ['vp09.00.10.08', 'vp09.01.10.08'],
+  av1: ['av01.0.01M.08', 'av01.0.04M.08']
 }
 
 class VideoDecoderManager {
@@ -51,9 +51,14 @@ class VideoDecoderManager {
   private frameCount = 0
   private lastFrameTime = 0
   private destroyed = false
+  private onStatsUpdate?: (stats: { fps: number; frameCount: number; latency: number }) => void
 
-  constructor(config: VideoDecoderConfig = DEFAULT_CODEC_CONFIG) {
+  constructor(config: VideoDecoderConfig) {
     this.config = config
+  }
+
+  setStatsCallback(callback: (stats: { fps: number; frameCount: number; latency: number }) => void) {
+    this.onStatsUpdate = callback
   }
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -72,12 +77,13 @@ class VideoDecoderManager {
       return this.initWebCodecs()
     }
 
-    console.warn('WebCodecs not supported, falling back to MSE')
+    console.warn('WebCodecs not supported')
     return false
   }
 
   private async initWebCodecs(): Promise<boolean> {
-    const codecString = this.getCodecString()
+    const codecString = CODEC_SUPPORT[this.config.codec]?.[0]
+    if (!codecString) return false
     
     const support = await VideoDecoder.isConfigSupported({
       codec: codecString,
@@ -103,11 +109,6 @@ class VideoDecoderManager {
     return true
   }
 
-  private getCodecString(): string {
-    const profiles = CODEC_SUPPORT[this.config.codec]
-    return profiles[0]
-  }
-
   private handleFrame(frame: VideoFrame): void {
     if (this.destroyed || !this.ctx || !this.canvas) {
       frame.close()
@@ -127,6 +128,10 @@ class VideoDecoderManager {
     
     this.frameCount++
     this.lastFrameTime = performance.now()
+    
+    if (this.onStatsUpdate) {
+      this.onStatsUpdate(this.getStats())
+    }
     
     frame.close()
   }
@@ -149,78 +154,13 @@ class VideoDecoderManager {
     this.decoder.decode(encodedChunk)
   }
 
-  decodeRawFrame(data: ArrayBuffer): void {
-    if (!this.ctx || !this.canvas || this.destroyed) return
-
-    const view = new DataView(data)
-    const width = view.getUint16(0, true)
-    const height = view.getUint16(2, true)
-    const format = view.getUint8(4)
-    
-    const pixelData = new Uint8Array(data, 5)
-    
-    if (this.canvas.width !== width || this.canvas.height !== height) {
-      this.canvas.width = width
-      this.canvas.height = height
-    }
-
-    const imageData = this.ctx.createImageData(width, height)
-    
-    if (format === 0) {
-      imageData.data.set(pixelData)
-    } else if (format === 1) {
-      this.yuvToRgba(pixelData, imageData.data, width, height)
-    }
-
-    this.ctx.putImageData(imageData, 0, 0)
-    this.frameCount++
-    this.lastFrameTime = performance.now()
-  }
-
-  private yuvToRgba(yuv: Uint8Array, rgba: Uint8ClampedArray, width: number, height: number): void {
-    const ySize = width * height
-    const uvSize = ySize >> 2
-    const yPlane = yuv.subarray(0, ySize)
-    const uPlane = yuv.subarray(ySize, ySize + uvSize)
-    const vPlane = yuv.subarray(ySize + uvSize)
-
-    let rgbaIdx = 0
-    let yIdx = 0
-    let uvIdx = 0
-
-    for (let row = 0; row < height; row++) {
-      for (let col = 0; col < width; col++) {
-        const y = yPlane[yIdx]
-        const u = uPlane[uvIdx] - 128
-        const v = vPlane[uvIdx] - 128
-
-        rgba[rgbaIdx] = Math.max(0, Math.min(255, y + 1.402 * v))
-        rgba[rgbaIdx + 1] = Math.max(0, Math.min(255, y - 0.344 * u - 0.714 * v))
-        rgba[rgbaIdx + 2] = Math.max(0, Math.min(255, y + 1.772 * u))
-        rgba[rgbaIdx + 3] = 255
-
-        rgbaIdx += 4
-        yIdx++
-        if (col % 2 === 1 && row % 2 === 0) {
-          uvIdx++
-        }
-      }
-    }
-  }
-
   getStats(): { fps: number; frameCount: number; latency: number } {
     const now = performance.now()
     const elapsed = (now - this.lastFrameTime) / 1000
     return {
-      fps: elapsed > 0 ? Math.round(1 / elapsed) : 0,
+      fps: elapsed > 0 && elapsed < 1 ? Math.round(1 / elapsed) : 0,
       frameCount: this.frameCount,
       latency: Math.round(elapsed * 1000)
-    }
-  }
-
-  flush(): void {
-    if (this.decoder) {
-      this.decoder.flush()
     }
   }
 
@@ -242,29 +182,22 @@ class VideoDecoderManager {
   }
 }
 
-const VideoPlayer: React.FC<VideoPlayerProps> = memo(({
-  message,
-  isPreview,
-  codec = 'h264',
-  autoPlay = true
-}) => {
+const VideoPlayer: React.FC<MessageRendererProps> = ({ message, isPreview }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const decoderRef = useRef<VideoDecoderManager | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
   
-  const [isPlaying, setIsPlaying] = useState(autoPlay)
   const [stats, setStats] = useState({ fps: 0, frameCount: 0, latency: 0 })
-  const [selectedCodec, setSelectedCodec] = useState<VideoCodec>(codec)
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!canvasRef.current) return
 
     const decoder = new VideoDecoderManager({
-      codec: selectedCodec,
+      codec: 'h264',
       format: 'annexb'
     })
+    
+    decoder.setStatsCallback(setStats)
     
     decoder.init(canvasRef.current).then(success => {
       if (!success) {
@@ -277,10 +210,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = memo(({
     return () => {
       decoder.destroy()
     }
-  }, [selectedCodec])
+  }, [])
 
   useEffect(() => {
-    if (!isPlaying || !decoderRef.current || !message.payload) return
+    if (!decoderRef.current || !message.payload) return
 
     try {
       let data: ArrayBuffer
@@ -294,45 +227,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = memo(({
       }
 
       decoderRef.current.decode(data)
-      
-      if (stats.frameCount % 10 === 0) {
-        setStats(decoderRef.current.getStats())
-      }
     } catch (e) {
       console.error('Decode error:', e)
     }
-  }, [message, isPlaying, stats.frameCount])
-
-  const togglePlay = useCallback(() => {
-    setIsPlaying(prev => !prev)
-  }, [])
-
-  const toggleFullscreen = useCallback(() => {
-    if (!containerRef.current) return
-
-    if (!isFullscreen) {
-      containerRef.current.requestFullscreen()
-    } else {
-      document.exitFullscreen()
-    }
-    setIsFullscreen(!isFullscreen)
-  }, [isFullscreen])
-
-  const handleReset = useCallback(() => {
-    decoderRef.current?.reset()
-    setStats({ fps: 0, frameCount: 0, latency: 0 })
-  }, [])
+  }, [message])
 
   if (isPreview) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 8,
-        padding: '4px 8px',
-        background: 'var(--color-bg-container)',
-        borderRadius: 4
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--color-bg-container)', borderRadius: 4 }}>
         <PlayCircleOutlined style={{ fontSize: 16, color: '#1890ff' }} />
         <Text type="secondary">视频帧 #{stats.frameCount}</Text>
         <Tag color="blue">{stats.fps} FPS</Tag>
@@ -341,100 +243,233 @@ const VideoPlayer: React.FC<VideoPlayerProps> = memo(({
   }
 
   return (
-    <div 
-      ref={containerRef}
-      style={{ 
-        position: 'relative',
-        background: '#000',
-        borderRadius: 8,
-        overflow: 'hidden'
-      }}
-    >
-      <canvas
-        ref={canvasRef}
-        style={{ 
-          width: '100%',
-          height: 'auto',
-          minHeight: 200,
-          display: 'block'
-        }}
-      />
-
+    <div style={{ position: 'relative', background: '#000', borderRadius: 8, overflow: 'hidden' }}>
+      <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', minHeight: 200, display: 'block' }} />
       {error && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          color: '#ff4d4f',
-          textAlign: 'center'
-        }}>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#ff4d4f' }}>
           <Text type="danger">{error}</Text>
         </div>
       )}
-
-      <div style={{
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        display: 'flex',
-        gap: 8
-      }}>
+      <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 8 }}>
         <Tag color="green">{stats.fps} FPS</Tag>
         <Tag color="blue">{stats.latency}ms</Tag>
-        <Tag color="purple">{selectedCodec.toUpperCase()}</Tag>
-      </div>
-
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        padding: '8px 12px',
-        background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between'
-      }}>
-        <Space>
-          <Button 
-            type="text" 
-            icon={isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-            onClick={togglePlay}
-            style={{ color: '#fff' }}
-          />
-          <Button 
-            type="text" 
-            icon={<ReloadOutlined />}
-            onClick={handleReset}
-            style={{ color: '#fff' }}
-          />
-        </Space>
-
-        <Space>
-          <Select
-            value={selectedCodec}
-            onChange={setSelectedCodec}
-            size="small"
-            style={{ width: 100 }}
-            options={[
-              { value: 'h264', label: 'H.264' },
-              { value: 'h265', label: 'H.265' },
-              { value: 'vp9', label: 'VP9' },
-              { value: 'av1', label: 'AV1' }
-            ]}
-          />
-          <Button 
-            type="text" 
-            icon={<FullscreenOutlined />}
-            onClick={toggleFullscreen}
-            style={{ color: '#fff' }}
-          />
-        </Space>
       </div>
     </div>
   )
-})
+}
+
+const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChange }) => {
+  const [streams, setStreams] = useState<VideoStreamConfig[]>(settings.streams || [])
+  const [activeStream, setActiveStream] = useState<string | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newSubject, setNewSubject] = useState('')
+  const [newCodec, setNewCodec] = useState<VideoCodec>('h264')
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const decoderRef = useRef<VideoDecoderManager | null>(null)
+  const [stats, setStats] = useState({ fps: 0, frameCount: 0, latency: 0 })
+
+  useEffect(() => {
+    onSettingsChange({ ...settings, streams })
+  }, [streams])
+
+  const addStream = useCallback(() => {
+    if (!newSubject.trim()) {
+      message.error('请输入主题')
+      return
+    }
+    
+    const newStream: VideoStreamConfig = {
+      subject: newSubject.trim(),
+      codec: newCodec,
+      autoPlay: true,
+      lowLatency: true,
+      bufferSize: 5
+    }
+    
+    setStreams(prev => [...prev, newStream])
+    setNewSubject('')
+    setShowAddModal(false)
+    message.success('已添加视频流')
+  }, [newSubject, newCodec])
+
+  const removeStream = useCallback((subject: string) => {
+    setStreams(prev => prev.filter(s => s.subject !== subject))
+    if (activeStream === subject) {
+      setActiveStream(null)
+    }
+  }, [activeStream])
+
+  const initDecoder = useCallback(async () => {
+    if (!canvasRef.current) return
+    
+    if (decoderRef.current) {
+      decoderRef.current.destroy()
+    }
+    
+    const stream = streams.find(s => s.subject === activeStream)
+    if (!stream) return
+    
+    const decoder = new VideoDecoderManager({
+      codec: stream.codec,
+      format: 'annexb'
+    })
+    
+    decoder.setStatsCallback(setStats)
+    
+    const success = await decoder.init(canvasRef.current)
+    if (success) {
+      decoderRef.current = decoder
+      setIsPlaying(true)
+    } else {
+      message.error('解码器初始化失败')
+    }
+  }, [activeStream, streams])
+
+  useEffect(() => {
+    if (activeStream) {
+      initDecoder()
+    }
+    
+    return () => {
+      if (decoderRef.current) {
+        decoderRef.current.destroy()
+      }
+    }
+  }, [activeStream])
+
+  const handleReset = useCallback(() => {
+    decoderRef.current?.reset()
+    setStats({ fps: 0, frameCount: 0, latency: 0 })
+  }, [])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card 
+        title="视频流列表" 
+        size="small"
+        extra={
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />} 
+            size="small"
+            onClick={() => setShowAddModal(true)}
+          >
+            添加视频流
+          </Button>
+        }
+      >
+        {streams.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <Text type="secondary">暂无视频流，点击上方按钮添加</Text>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {streams.map(stream => (
+              <div 
+                key={stream.subject}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  background: activeStream === stream.subject ? 'var(--color-primary-bg)' : 'var(--color-bg-container)',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  border: activeStream === stream.subject ? '1px solid var(--color-primary)' : '1px solid transparent'
+                }}
+                onClick={() => setActiveStream(stream.subject)}
+              >
+                <Space>
+                  <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
+                  <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
+                  <Tag>{stream.codec.toUpperCase()}</Tag>
+                </Space>
+                <Button 
+                  type="text" 
+                  danger 
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeStream(stream.subject)
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {activeStream && (
+        <Card 
+          title={
+            <Space>
+              <Text>播放器</Text>
+              <Tag color="blue">{activeStream}</Tag>
+            </Space>
+          }
+          size="small"
+          extra={
+            <Space>
+              <Tag color="green">{stats.fps} FPS</Tag>
+              <Tag color="blue">{stats.latency}ms</Tag>
+              <Tooltip title="重置">
+                <Button type="text" icon={<ReloadOutlined />} onClick={handleReset} />
+              </Tooltip>
+            </Space>
+          }
+        >
+          <div style={{ position: 'relative', background: '#000', borderRadius: 8, overflow: 'hidden' }}>
+            <canvas 
+              ref={canvasRef} 
+              style={{ width: '100%', height: 300, display: 'block' }} 
+            />
+            {!isPlaying && (
+              <div style={{ 
+                position: 'absolute', 
+                top: '50%', 
+                left: '50%', 
+                transform: 'translate(-50%, -50%)',
+                textAlign: 'center'
+              }}>
+                <PlayCircleOutlined style={{ fontSize: 48, color: '#fff', opacity: 0.5 }} />
+                <div><Text style={{ color: '#fff', opacity: 0.5 }}>等待视频流...</Text></div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      <Modal
+        title="添加视频流"
+        open={showAddModal}
+        onOk={addStream}
+        onCancel={() => setShowAddModal(false)}
+        okText="添加"
+        cancelText="取消"
+      >
+        <Form layout="vertical">
+          <Form.Item label="主题 (Subject)" required>
+            <Input 
+              placeholder="例如: camera.front.door" 
+              value={newSubject}
+              onChange={(e) => setNewSubject(e.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="编码格式">
+            <Select 
+              value={newCodec} 
+              onChange={setNewCodec}
+              options={CODEC_OPTIONS}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  )
+}
 
 const isVideoData = (payload: string): boolean => {
   if (!payload || payload.length < 10) return false
@@ -466,30 +501,22 @@ const videoPlayerPlugin: NatsClientPlugin = {
         subjectPattern: 'video.*',
         priority: 100,
         renderer: VideoRenderer
-      },
+      }
+    ],
+    panels: [
       {
-        subjectPattern: 'stream.video.*',
-        priority: 100,
-        renderer: VideoRenderer
-      },
-      {
-        subjectPattern: 'media.video.*',
-        priority: 100,
-        renderer: VideoRenderer
+        id: 'video-player-main',
+        title: '视频播放器',
+        icon: <PlayCircleOutlined />,
+        position: 'tab',
+        component: VideoPlayerPanel,
+        showInPluginList: true
       }
     ]
   },
 
   activate: (context) => {
     context.logger.info('Video Player plugin activated')
-    
-    context.storage.set('defaultCodec', 'h264')
-    context.storage.set('lowLatency', true)
-    context.storage.set('bufferSize', 5)
-  },
-
-  deactivate: () => {
-    console.log('Video Player plugin deactivated')
   }
 }
 

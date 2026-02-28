@@ -6,7 +6,8 @@ import type {
   MessageHandler,
   MessageRendererDefinition,
   MessageRendererProps,
-  PublishInterceptor
+  PublishInterceptor,
+  PanelDefinition
 } from './types'
 import type { NatsMessage, PublishOptions } from '../types/nats'
 import { message } from 'antd'
@@ -29,11 +30,17 @@ interface PublishInterceptorEntry {
   pluginId: string
 }
 
+interface PanelEntry {
+  panel: PanelDefinition
+  pluginId: string
+}
+
 class PluginManagerImpl {
   private plugins: Map<string, PluginInstance> = new Map()
   private messageHandlers: MessageHandlerEntry[] = []
   private messageRenderers: MessageRendererEntry[] = []
   private publishInterceptors: PublishInterceptorEntry[] = []
+  private panels: PanelEntry[] = []
   private commandRegistry: Map<string, () => void> = new Map()
   private pluginStorage: Map<string, Map<string, any>> = new Map()
 
@@ -120,6 +127,15 @@ class PluginManagerImpl {
         }
       }
 
+      if (plugin.capabilities.panels) {
+        for (const panel of plugin.capabilities.panels) {
+          this.panels.push({
+            panel,
+            pluginId: plugin.id
+          })
+        }
+      }
+
       const context = this.createPluginContext(plugin)
       instance.context = context
 
@@ -149,6 +165,7 @@ class PluginManagerImpl {
       this.messageHandlers = this.messageHandlers.filter(e => e.pluginId !== pluginId)
       this.messageRenderers = this.messageRenderers.filter(e => e.pluginId !== pluginId)
       this.publishInterceptors = this.publishInterceptors.filter(e => e.pluginId !== pluginId)
+      this.panels = this.panels.filter(e => e.pluginId !== pluginId)
 
       instance.info.active = false
       instance.context = undefined
@@ -165,6 +182,13 @@ class PluginManagerImpl {
 
   getPlugin(pluginId: string): PluginInstance | undefined {
     return this.plugins.get(pluginId)
+  }
+
+  getPanels(): PanelEntry[] {
+    return this.panels.filter(entry => {
+      const instance = this.plugins.get(entry.pluginId)
+      return instance?.info.active
+    })
   }
 
   async handleMessage(msg: NatsMessage, subscriptionId: string): Promise<boolean> {

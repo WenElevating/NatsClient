@@ -81,8 +81,15 @@ export interface PanelDefinition {
   id: string
   title: string
   icon: React.ReactNode
-  position: 'tab' | 'sidebar' | 'bottom'
-  component: React.ComponentType
+  position: 'tab' | 'sidebar' | 'modal'
+  component: React.ComponentType<PluginPanelProps>
+  showInPluginList?: boolean
+}
+
+export interface PluginPanelProps {
+  pluginId: string
+  settings: Record<string, any>
+  onSettingsChange: (settings: Record<string, any>) => void
 }
 
 export interface SettingsDefinition {

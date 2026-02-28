@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Layout, Tabs, ConfigProvider, theme, message } from 'antd'
 import { 
   SendOutlined, 
@@ -23,6 +23,7 @@ import PluginMarket from './PluginMarket'
 import PluginSettings from './PluginSettings'
 import { useConnectionStore, useSettingsStore, useLogStore, usePluginStore } from '../stores'
 import { darkTheme, lightTheme } from '../themes'
+import { pluginManager } from '../plugins'
 import jsonFormatterPlugin from '../plugins/builtin/json-formatter'
 import videoPlayerPlugin from '../plugins/builtin/video-player'
 
@@ -38,7 +39,8 @@ const MainLayout: React.FC = () => {
   const { connectionState } = useConnectionStore()
   const { loadSettings, theme: currentTheme } = useSettingsStore()
   const { addLog } = useLogStore()
-  const { loadPlugins, registerPlugin, activatePlugin } = usePluginStore()
+  const { loadPlugins, registerPlugin, activatePlugin, plugins } = usePluginStore()
+  const [pluginSettings, setPluginSettings] = useState<Record<string, Record<string, any>>>({})
 
   useEffect(() => {
     loadSettings()
@@ -108,6 +110,37 @@ const MainLayout: React.FC = () => {
     }
   }, [currentTheme])
 
+  const pluginTabs = useMemo(() => {
+    const panels = pluginManager.getPanels()
+    return panels
+      .filter(entry => entry.panel.position === 'tab')
+      .map(entry => {
+        const PanelComponent = entry.panel.component
+        const handleSettingsChange = (newSettings: Record<string, any>) => {
+          setPluginSettings(prev => ({
+            ...prev,
+            [entry.pluginId]: newSettings
+          }))
+        }
+        return {
+          key: `plugin-${entry.panel.id}`,
+          label: (
+            <span className="tab-label">
+              {entry.panel.icon}
+              <span>{entry.panel.title}</span>
+            </span>
+          ),
+          children: (
+            <PanelComponent 
+              pluginId={entry.pluginId}
+              settings={pluginSettings[entry.pluginId] || {}}
+              onSettingsChange={handleSettingsChange}
+            />
+          )
+        }
+      })
+  }, [plugins, pluginSettings])
+
   const tabItems = [
     {
       key: 'publish',
@@ -173,7 +206,8 @@ const MainLayout: React.FC = () => {
           <PluginSettings />
         </div>
       )
-    }
+    },
+    ...pluginTabs
   ]
 
   return (

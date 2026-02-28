@@ -4,7 +4,7 @@ import { VideoCameraOutlined, CodeOutlined, EyeOutlined } from '@ant-design/icon
 import { useTranslation } from 'react-i18next'
 import { usePluginStore } from '../stores/pluginStore'
 
-const { Text, Title } = Typography
+const { Text } = Typography
 
 const getPluginIcon = (pluginId: string) => {
   if (pluginId.includes('video')) return <VideoCameraOutlined style={{ fontSize: 24, color: '#1890ff' }} />
