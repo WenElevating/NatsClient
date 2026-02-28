@@ -442,8 +442,6 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   }, [webCodecsSupported, stopStream])
 
   useEffect(() => {
-    if (!subscriptionIdRef.current) return
-
     const handleMessage = (data: { subscriptionId: string; message: { payload: string; subject: string } }) => {
       if (data.subscriptionId !== subscriptionIdRef.current) return
       if (!decoderRef.current) return
@@ -478,10 +476,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       }
     }
 
-    const unsubscribe = window.nats.onMessage(handleMessage)
-    return () => {
-      unsubscribe?.()
-    }
+    window.nats.onMessage(handleMessage)
   }, [])
 
   const handleReset = useCallback(() => {
