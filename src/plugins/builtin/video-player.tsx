@@ -1,10 +1,13 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
-import { Button, Space, Select, Typography, Tag, Input, Form, Card, message, Modal, Tooltip } from 'antd'
+import { Button, Space, Select, Typography, Tag, Input, Form, Card, message, Modal, Tooltip, Alert } from 'antd'
 import { 
   PlayCircleOutlined, 
   ReloadOutlined,
   PlusOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  LoadingOutlined
 } from '@ant-design/icons'
 import type { NatsClientPlugin, MessageRendererProps, PluginPanelProps } from '../types'
 
@@ -43,6 +46,8 @@ const CODEC_SUPPORT: Record<VideoCodec, string[]> = {
   av1: ['av01.0.01M.08', 'av01.0.04M.08']
 }
 
+type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
+
 class VideoDecoderManager {
   private decoder: VideoDecoder | null = null
   private canvas: HTMLCanvasElement | null = null
@@ -52,6 +57,8 @@ class VideoDecoderManager {
   private lastFrameTime = 0
   private destroyed = false
   private onStatsUpdate?: (stats: { fps: number; frameCount: number; latency: number }) => void
+  private onStatusChange?: (status: DecoderStatus) => void
+  private status: DecoderStatus = 'idle'
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -59,6 +66,19 @@ class VideoDecoderManager {
 
   setStatsCallback(callback: (stats: { fps: number; frameCount: number; latency: number }) => void) {
     this.onStatsUpdate = callback
+  }
+
+  setStatusCallback(callback: (status: DecoderStatus) => void) {
+    this.onStatusChange = callback
+  }
+
+  private setStatus(status: DecoderStatus) {
+    this.status = status
+    this.onStatusChange?.(status)
+  }
+
+  getStatus(): DecoderStatus {
+    return this.status
   }
 
   async init(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -70,14 +90,24 @@ class VideoDecoderManager {
 
     if (!this.ctx) {
       console.error('Failed to get 2D context')
+      this.setStatus('error')
       return false
     }
 
+    this.setStatus('initializing')
+
     if ('VideoDecoder' in window) {
-      return this.initWebCodecs()
+      const success = await this.initWebCodecs()
+      if (success) {
+        this.setStatus('ready')
+      } else {
+        this.setStatus('error')
+      }
+      return success
     }
 
     console.warn('WebCodecs not supported')
+    this.setStatus('error')
     return false
   }
 
@@ -85,28 +115,36 @@ class VideoDecoderManager {
     const codecString = CODEC_SUPPORT[this.config.codec]?.[0]
     if (!codecString) return false
     
-    const support = await VideoDecoder.isConfigSupported({
-      codec: codecString,
-      optimizeForLatency: true
-    })
+    try {
+      const support = await VideoDecoder.isConfigSupported({
+        codec: codecString,
+        optimizeForLatency: true
+      })
 
-    if (!support.supported) {
-      console.error(`Codec ${codecString} not supported`)
+      if (!support.supported) {
+        console.error(`Codec ${codecString} not supported`)
+        return false
+      }
+
+      this.decoder = new VideoDecoder({
+        output: (frame) => this.handleFrame(frame),
+        error: (e) => {
+          console.error('VideoDecoder error:', e)
+          this.setStatus('error')
+        }
+      })
+
+      this.decoder.configure({
+        codec: codecString,
+        optimizeForLatency: true,
+        hardwareAcceleration: 'prefer-hardware'
+      })
+
+      return true
+    } catch (e) {
+      console.error('initWebCodecs error:', e)
       return false
     }
-
-    this.decoder = new VideoDecoder({
-      output: (frame) => this.handleFrame(frame),
-      error: (e) => console.error('VideoDecoder error:', e)
-    })
-
-    this.decoder.configure({
-      codec: codecString,
-      optimizeForLatency: true,
-      hardwareAcceleration: 'prefer-hardware'
-    })
-
-    return true
   }
 
   private handleFrame(frame: VideoFrame): void {
@@ -129,6 +167,10 @@ class VideoDecoderManager {
     this.frameCount++
     this.lastFrameTime = performance.now()
     
+    if (this.status !== 'decoding') {
+      this.setStatus('decoding')
+    }
+    
     if (this.onStatsUpdate) {
       this.onStatsUpdate(this.getStats())
     }
@@ -136,22 +178,35 @@ class VideoDecoderManager {
     frame.close()
   }
 
-  async decode(data: ArrayBuffer | Uint8Array): Promise<void> {
-    if (!this.decoder || this.destroyed) return
-
-    const chunk = new Uint8Array(data)
+  async decode(data: ArrayBuffer | Uint8Array): Promise<{ success: boolean; error?: string }> {
+    if (!this.decoder) {
+      return { success: false, error: '解码器未初始化' }
+    }
     
-    const encodedChunk = new EncodedVideoChunk({
-      type: 'delta',
-      timestamp: performance.now() * 1000,
-      data: chunk
-    })
-
-    if (this.decoder.decodeQueueSize > 5) {
-      this.decoder.flush()
+    if (this.destroyed) {
+      return { success: false, error: '解码器已销毁' }
     }
 
-    this.decoder.decode(encodedChunk)
+    try {
+      const chunk = new Uint8Array(data)
+      
+      const encodedChunk = new EncodedVideoChunk({
+        type: 'delta',
+        timestamp: performance.now() * 1000,
+        data: chunk
+      })
+
+      if (this.decoder.decodeQueueSize > 5) {
+        this.decoder.flush()
+      }
+
+      this.decoder.decode(encodedChunk)
+      return { success: true }
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e)
+      console.error('Decode error:', errorMsg)
+      return { success: false, error: errorMsg }
+    }
   }
 
   getStats(): { fps: number; frameCount: number; latency: number } {
@@ -168,6 +223,7 @@ class VideoDecoderManager {
     if (this.decoder) {
       this.decoder.reset()
       this.frameCount = 0
+      this.setStatus('ready')
     }
   }
 
@@ -179,6 +235,7 @@ class VideoDecoderManager {
     }
     this.ctx = null
     this.canvas = null
+    this.setStatus('idle')
   }
 }
 
@@ -261,14 +318,24 @@ const VideoPlayer: React.FC<MessageRendererProps> = ({ message, isPreview }) => 
 const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChange }) => {
   const [streams, setStreams] = useState<VideoStreamConfig[]>(settings.streams || [])
   const [activeStream, setActiveStream] = useState<string | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newSubject, setNewSubject] = useState('')
   const [newCodec, setNewCodec] = useState<VideoCodec>('h264')
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const decoderRef = useRef<VideoDecoderManager | null>(null)
+  const subscriptionIdRef = useRef<string | null>(null)
+  
   const [stats, setStats] = useState({ fps: 0, frameCount: 0, latency: 0 })
+  const [decoderStatus, setDecoderStatus] = useState<DecoderStatus>('idle')
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'none' | 'subscribing' | 'subscribed' | 'error'>('none')
+  const [receivedFrames, setReceivedFrames] = useState(0)
+  const [decodeErrors, setDecodeErrors] = useState<string[]>([])
+  const [webCodecsSupported, setWebCodecsSupported] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    setWebCodecsSupported('VideoDecoder' in window)
+  }, [])
 
   useEffect(() => {
     onSettingsChange({ ...settings, streams })
@@ -294,58 +361,164 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     message.success('已添加视频流')
   }, [newSubject, newCodec])
 
-  const removeStream = useCallback((subject: string) => {
-    setStreams(prev => prev.filter(s => s.subject !== subject))
+  const removeStream = useCallback(async (subject: string) => {
     if (activeStream === subject) {
-      setActiveStream(null)
+      await stopStream()
     }
+    setStreams(prev => prev.filter(s => s.subject !== subject))
   }, [activeStream])
 
-  const initDecoder = useCallback(async () => {
-    if (!canvasRef.current) return
+  const stopStream = useCallback(async () => {
+    if (subscriptionIdRef.current) {
+      try {
+        await window.nats.unsubscribe(subscriptionIdRef.current)
+      } catch (e) {
+        console.error('Unsubscribe error:', e)
+      }
+      subscriptionIdRef.current = null
+    }
     
     if (decoderRef.current) {
       decoderRef.current.destroy()
+      decoderRef.current = null
     }
     
-    const stream = streams.find(s => s.subject === activeStream)
-    if (!stream) return
+    setActiveStream(null)
+    setSubscriptionStatus('none')
+    setDecoderStatus('idle')
+    setReceivedFrames(0)
+    setDecodeErrors([])
+  }, [])
+
+  const startStream = useCallback(async (subject: string, codec: VideoCodec) => {
+    if (!webCodecsSupported) {
+      message.error('浏览器不支持 WebCodecs API')
+      return
+    }
+
+    await stopStream()
+    
+    setActiveStream(subject)
+    setSubscriptionStatus('subscribing')
+    setDecodeErrors([])
+
+    if (!canvasRef.current) {
+      setSubscriptionStatus('error')
+      message.error('Canvas 未初始化')
+      return
+    }
     
     const decoder = new VideoDecoderManager({
-      codec: stream.codec,
+      codec,
       format: 'annexb'
     })
     
     decoder.setStatsCallback(setStats)
+    decoder.setStatusCallback(setDecoderStatus)
     
     const success = await decoder.init(canvasRef.current)
-    if (success) {
-      decoderRef.current = decoder
-      setIsPlaying(true)
-    } else {
+    if (!success) {
       message.error('解码器初始化失败')
-    }
-  }, [activeStream, streams])
-
-  useEffect(() => {
-    if (activeStream) {
-      initDecoder()
+      setSubscriptionStatus('error')
+      return
     }
     
-    return () => {
-      if (decoderRef.current) {
-        decoderRef.current.destroy()
+    decoderRef.current = decoder
+
+    try {
+      const result = await window.nats.subscribe(subject)
+      if (result.success && result.subscriptionId) {
+        subscriptionIdRef.current = result.subscriptionId
+        setSubscriptionStatus('subscribed')
+        message.success(`已订阅 ${subject}`)
+      } else {
+        setSubscriptionStatus('error')
+        message.error(`订阅失败: ${result.error}`)
+      }
+    } catch (e) {
+      setSubscriptionStatus('error')
+      message.error(`订阅异常: ${e}`)
+    }
+  }, [webCodecsSupported, stopStream])
+
+  useEffect(() => {
+    if (!subscriptionIdRef.current) return
+
+    const handleMessage = (data: { subscriptionId: string; message: { payload: string; subject: string } }) => {
+      if (data.subscriptionId !== subscriptionIdRef.current) return
+      if (!decoderRef.current) return
+
+      setReceivedFrames(prev => prev + 1)
+
+      try {
+        let frameData: ArrayBuffer
+        
+        if (typeof data.message.payload === 'string') {
+          try {
+            const binary = atob(data.message.payload)
+            frameData = new ArrayBuffer(binary.length)
+            new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
+          } catch {
+            frameData = new TextEncoder().encode(data.message.payload).buffer
+          }
+        } else {
+          frameData = new TextEncoder().encode(String(data.message.payload)).buffer
+        }
+
+        decoderRef.current.decode(frameData).then(result => {
+          if (!result.success && result.error) {
+            setDecodeErrors(prev => {
+              const newErrors = [...prev, result.error!]
+              return newErrors.slice(-5)
+            })
+          }
+        })
+      } catch (e) {
+        console.error('Frame handling error:', e)
       }
     }
-  }, [activeStream])
+
+    const unsubscribe = window.nats.onMessage(handleMessage)
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
 
   const handleReset = useCallback(() => {
     decoderRef.current?.reset()
     setStats({ fps: 0, frameCount: 0, latency: 0 })
+    setReceivedFrames(0)
+    setDecodeErrors([])
   }, [])
+
+  const getStatusTag = () => {
+    switch (decoderStatus) {
+      case 'idle':
+        return <Tag>空闲</Tag>
+      case 'initializing':
+        return <Tag color="processing" icon={<LoadingOutlined />}>初始化中</Tag>
+      case 'ready':
+        return <Tag color="warning">等待数据</Tag>
+      case 'decoding':
+        return <Tag color="success" icon={<CheckCircleOutlined />}>解码中</Tag>
+      case 'error':
+        return <Tag color="error" icon={<CloseCircleOutlined />}>错误</Tag>
+      default:
+        return <Tag>未知</Tag>
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {webCodecsSupported === false && (
+        <Alert 
+          type="error" 
+          message="浏览器不支持 WebCodecs API" 
+          description="请使用最新版本的 Chrome/Edge 浏览器"
+          showIcon
+        />
+      )}
+
       <Card 
         title="视频流列表" 
         size="small"
@@ -379,68 +552,95 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   cursor: 'pointer',
                   border: activeStream === stream.subject ? '1px solid var(--color-primary)' : '1px solid transparent'
                 }}
-                onClick={() => setActiveStream(stream.subject)}
+                onClick={() => {
+                  if (activeStream === stream.subject) {
+                    stopStream()
+                  } else {
+                    startStream(stream.subject, stream.codec)
+                  }
+                }}
               >
                 <Space>
                   <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
                   <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
                   <Tag>{stream.codec.toUpperCase()}</Tag>
                 </Space>
-                <Button 
-                  type="text" 
-                  danger 
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    removeStream(stream.subject)
-                  }}
-                />
+                <Space>
+                  {activeStream === stream.subject && subscriptionStatus === 'subscribed' && (
+                    <Tag color="green">播放中</Tag>
+                  )}
+                  <Button 
+                    type="text" 
+                    danger 
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeStream(stream.subject)
+                    }}
+                  />
+                </Space>
               </div>
             ))}
           </div>
         )}
       </Card>
 
-      {activeStream && (
-        <Card 
-          title={
-            <Space>
-              <Text>播放器</Text>
-              <Tag color="blue">{activeStream}</Tag>
-            </Space>
-          }
-          size="small"
-          extra={
-            <Space>
-              <Tag color="green">{stats.fps} FPS</Tag>
-              <Tag color="blue">{stats.latency}ms</Tag>
-              <Tooltip title="重置">
-                <Button type="text" icon={<ReloadOutlined />} onClick={handleReset} />
-              </Tooltip>
-            </Space>
-          }
-        >
-          <div style={{ position: 'relative', background: '#000', borderRadius: 8, overflow: 'hidden' }}>
-            <canvas 
-              ref={canvasRef} 
-              style={{ width: '100%', height: 300, display: 'block' }} 
-            />
-            {!isPlaying && (
-              <div style={{ 
-                position: 'absolute', 
-                top: '50%', 
-                left: '50%', 
-                transform: 'translate(-50%, -50%)',
-                textAlign: 'center'
-              }}>
-                <PlayCircleOutlined style={{ fontSize: 48, color: '#fff', opacity: 0.5 }} />
-                <div><Text style={{ color: '#fff', opacity: 0.5 }}>等待视频流...</Text></div>
+      <Card 
+        title={
+          <Space>
+            <Text>播放器</Text>
+            {activeStream && <Tag color="blue">{activeStream}</Tag>}
+          </Space>
+        }
+        size="small"
+        extra={
+          <Space>
+            {getStatusTag()}
+            <Tag color="cyan">接收: {receivedFrames}</Tag>
+            <Tag color="green">{stats.fps} FPS</Tag>
+            <Tag color="blue">{stats.latency}ms</Tag>
+            <Tooltip title="重置">
+              <Button type="text" icon={<ReloadOutlined />} onClick={handleReset} />
+            </Tooltip>
+          </Space>
+        }
+      >
+        <div style={{ position: 'relative', background: '#000', borderRadius: 8, overflow: 'hidden', minHeight: 300 }}>
+          <canvas 
+            ref={canvasRef} 
+            style={{ width: '100%', height: 300, display: 'block' }} 
+          />
+          {decoderStatus !== 'decoding' && (
+            <div style={{ 
+              position: 'absolute', 
+              top: '50%', 
+              left: '50%', 
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'center'
+            }}>
+              <PlayCircleOutlined style={{ fontSize: 48, color: '#fff', opacity: 0.5 }} />
+              <div>
+                <Text style={{ color: '#fff', opacity: 0.5 }}>
+                  {decoderStatus === 'idle' && '选择视频流开始播放'}
+                  {decoderStatus === 'initializing' && '初始化解码器...'}
+                  {decoderStatus === 'ready' && '等待视频数据...'}
+                  {decoderStatus === 'error' && '解码器错误'}
+                  {!webCodecsSupported && 'WebCodecs 不支持'}
+                </Text>
               </div>
-            )}
+            </div>
+          )}
+        </div>
+
+        {decodeErrors.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <Text type="danger" style={{ fontSize: 12 }}>
+              最近解码错误: {decodeErrors[decodeErrors.length - 1]}
+            </Text>
           </div>
-        </Card>
-      )}
+        )}
+      </Card>
 
       <Modal
         title="添加视频流"
