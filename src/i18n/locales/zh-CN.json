@@ -53,11 +53,9 @@
     "payloadPlaceholder": "输入 JSON 或文本消息",
     "notConnected": "未连接到 NATS 服务器",
     "scheduled": "定时发布",
-    "on": "开",
-    "off": "关",
     "every": "每隔",
-    "seconds": "秒发布一次",
-    "startTask": "启动定时任务",
+    "seconds": "秒",
+    "startTask": "启动",
     "taskStarted": "定时发布任务已启动",
     "taskPaused": "任务已暂停",
     "taskResumed": "任务已恢复",
@@ -69,6 +67,7 @@
     "resume": "恢复",
     "confirmStopAll": "确定停止所有定时任务？",
     "confirmDelete": "确定删除此任务？",
+    "confirmSchedule": "设置定时发布频率：",
     "stopAll": "停止全部"
   },
   "subscribe": {

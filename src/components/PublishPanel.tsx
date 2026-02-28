@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { Card, Form, Input, Button, message, Switch, InputNumber, Space, Tag, List, Popconfirm, Typography } from 'antd'
+import { Card, Form, Input, Button, message, InputNumber, Space, Tag, List, Popconfirm, Typography } from 'antd'
 import { SendOutlined, ClockCircleOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useConnectionStore } from '../stores'
@@ -24,7 +24,6 @@ const PublishPanel: React.FC = () => {
   const [form] = Form.useForm()
   const { connectionState } = useConnectionStore()
   const [loading, setLoading] = useState(false)
-  const [scheduledEnabled, setScheduledEnabled] = useState(false)
   const [intervalSeconds, setIntervalSeconds] = useState(1)
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([])
   const timersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
@@ -36,7 +35,7 @@ const PublishPanel: React.FC = () => {
     return result
   }, [])
 
-  const handlePublish = async () => {
+  const handlePublish = async (scheduled: boolean = false) => {
     if (!isConnected) {
       message.error(t('publish.notConnected'))
       return
@@ -50,7 +49,7 @@ const PublishPanel: React.FC = () => {
         headers: values.headers ? JSON.parse(values.headers) : undefined
       }
 
-      if (scheduledEnabled && intervalSeconds > 0) {
+      if (scheduled && intervalSeconds > 0) {
         const taskId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
         const task: ScheduledTask = {
           id: taskId,
@@ -68,7 +67,7 @@ const PublishPanel: React.FC = () => {
         form.resetFields(['payload', 'headers'])
 
         const timer = setInterval(async () => {
-          const result = await executePublish(options)
+          await executePublish(options)
           setScheduledTasks(prev => prev.map(t => {
             if (t.id === taskId) {
               return { ...t, count: t.count + 1 }
@@ -160,92 +159,104 @@ const PublishPanel: React.FC = () => {
   }
 
   return (
-    <Card 
-      title={t('publish.title')} 
-      className="panel-card"
-      extra={
-        scheduledTasks.some(t => t.isRunning) && (
-          <Popconfirm
-            title={t('publish.confirmStopAll', '确定停止所有定时任务？')}
-            onConfirm={handleStopAll}
-            okText={t('common.confirm')}
-            cancelText={t('common.cancel')}
+    <>
+      <Card title={t('publish.title')} className="panel-card">
+        <Form form={form} layout="vertical">
+          <Form.Item
+            name="subject"
+            label={t('publish.subject')}
+            rules={[{ required: true, message: t('publish.subjectRequired') }]}
           >
-            <Button size="small" danger icon={<PauseCircleOutlined />}>
-              {t('publish.stopAll', '停止全部')}
-            </Button>
-          </Popconfirm>
-        )
-      }
-    >
-      <Form form={form} layout="vertical">
-        <Form.Item
-          name="subject"
-          label={t('publish.subject')}
-          rules={[{ required: true, message: t('publish.subjectRequired') }]}
-        >
-          <Input placeholder="orders.created, events.>" />
-        </Form.Item>
+            <Input placeholder="orders.created, events.>" />
+          </Form.Item>
 
-        <Form.Item
-          name="payload"
-          label={t('publish.payload')}
-          rules={[{ required: true, message: t('publish.payloadRequired') }]}
-        >
-          <TextArea rows={4} placeholder={t('publish.payloadPlaceholder', '输入 JSON 或文本消息')} />
-        </Form.Item>
+          <Form.Item
+            name="payload"
+            label={t('publish.payload')}
+            rules={[{ required: true, message: t('publish.payloadRequired') }]}
+          >
+            <TextArea rows={4} placeholder={t('publish.payloadPlaceholder', '输入 JSON 或文本消息')} />
+          </Form.Item>
 
-        <Form.Item
-          name="headers"
-          label={t('publish.headers')}
-        >
-          <TextArea rows={2} placeholder='{"key": "value"}' />
-        </Form.Item>
+          <Form.Item
+            name="headers"
+            label={t('publish.headers')}
+          >
+            <TextArea rows={2} placeholder='{"key": "value"}' />
+          </Form.Item>
 
-        <Form.Item label={t('publish.scheduled', '定时发布')}>
-          <Space direction="vertical" style={{ width: '100%' }}>
+          <Form.Item>
             <Space>
-              <Switch 
-                checked={scheduledEnabled} 
-                onChange={setScheduledEnabled}
-                checkedChildren={t('publish.on', '开')}
-                unCheckedChildren={t('publish.off', '关')}
-              />
-              {scheduledEnabled && (
-                <>
-                  <span>{t('publish.every', '每隔')}</span>
-                  <InputNumber
-                    min={1}
-                    max={86400}
-                    value={intervalSeconds}
-                    onChange={(v) => setIntervalSeconds(v || 1)}
-                    style={{ width: 80 }}
-                  />
-                  <span>{t('publish.seconds', '秒发布一次')}</span>
-                </>
-              )}
+              <Button 
+                type="primary" 
+                icon={<SendOutlined />}
+                onClick={() => handlePublish(false)}
+                loading={loading}
+                disabled={!isConnected}
+              >
+                {t('publish.publish')}
+              </Button>
+              <Popconfirm
+                title={
+                  <Space direction="vertical">
+                    <span>{t('publish.confirmSchedule', '设置定时发布频率：')}</span>
+                    <Space>
+                      <span>{t('publish.every', '每隔')}</span>
+                      <InputNumber
+                        min={1}
+                        max={86400}
+                        value={intervalSeconds}
+                        onChange={(v) => setIntervalSeconds(v || 1)}
+                        style={{ width: 80 }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <span>{t('publish.seconds', '秒')}</span>
+                    </Space>
+                  </Space>
+                }
+                onConfirm={() => handlePublish(true)}
+                okText={t('publish.startTask', '启动')}
+                cancelText={t('common.cancel')}
+                disabled={!isConnected}
+              >
+                <Button 
+                  icon={<ClockCircleOutlined />}
+                  disabled={!isConnected}
+                >
+                  {t('publish.scheduled', '定时发布')}
+                </Button>
+              </Popconfirm>
             </Space>
-          </Space>
-        </Form.Item>
-
-        <Form.Item>
-          <Button 
-            type="primary" 
-            icon={scheduledEnabled ? <ClockCircleOutlined /> : <SendOutlined />}
-            onClick={handlePublish}
-            loading={loading}
-            disabled={!isConnected}
-          >
-            {scheduledEnabled ? t('publish.startTask', '启动定时任务') : t('publish.publish')}
-          </Button>
-        </Form.Item>
-      </Form>
+          </Form.Item>
+        </Form>
+      </Card>
 
       {scheduledTasks.length > 0 && (
-        <>
-          <div style={{ marginTop: 16, marginBottom: 8 }}>
-            <Tag color="blue">{t('publish.taskList', '定时任务列表')} ({scheduledTasks.length})</Tag>
-          </div>
+        <Card 
+          className="panel-card" 
+          style={{ marginTop: 16 }}
+          title={
+            <Space>
+              <ClockCircleOutlined />
+              <span>{t('publish.taskList', '定时任务列表')}</span>
+              <Tag color="blue">{scheduledTasks.length}</Tag>
+            </Space>
+          }
+          extra={
+            scheduledTasks.some(t => t.isRunning) && (
+              <Popconfirm
+                title={t('publish.confirmStopAll', '确定停止所有定时任务？')}
+                onConfirm={handleStopAll}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+              >
+                <Button size="small" danger icon={<PauseCircleOutlined />}>
+                  {t('publish.stopAll', '停止全部')}
+                </Button>
+              </Popconfirm>
+            )
+          }
+        >
           <List
             size="small"
             dataSource={scheduledTasks}
@@ -300,9 +311,9 @@ const PublishPanel: React.FC = () => {
               </List.Item>
             )}
           />
-        </>
+        </Card>
       )}
-    </Card>
+    </>
   )
 }
 

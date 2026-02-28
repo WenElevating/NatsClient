@@ -52,12 +52,10 @@
     "payloadRequired": "Please enter payload",
     "payloadPlaceholder": "Enter JSON or text message",
     "notConnected": "Not connected to NATS server",
-    "scheduled": "Scheduled Publish",
-    "on": "On",
-    "off": "Off",
+    "scheduled": "Scheduled",
     "every": "Every",
     "seconds": "seconds",
-    "startTask": "Start Task",
+    "startTask": "Start",
     "taskStarted": "Scheduled task started",
     "taskPaused": "Task paused",
     "taskResumed": "Task resumed",
@@ -69,6 +67,7 @@
     "resume": "Resume",
     "confirmStopAll": "Stop all scheduled tasks?",
     "confirmDelete": "Delete this task?",
+    "confirmSchedule": "Set publish interval:",
     "stopAll": "Stop All"
   },
   "subscribe": {
