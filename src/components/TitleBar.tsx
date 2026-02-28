@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Typography, Tooltip } from 'antd'
+import { Tooltip } from 'antd'
 import { 
   MinusOutlined, 
   BorderOutlined, 
@@ -12,8 +12,6 @@ import {
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useConnectionStore, useSettingsStore } from '../stores'
-
-const { Text } = Typography
 
 const TitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false)
@@ -88,15 +86,15 @@ const TitleBar = () => {
           <div className="app-icon">
             <CloudOutlined style={{ fontSize: 16, color: '#1890ff' }} />
           </div>
-          <Text className="app-title">{t('app.title')}</Text>
+          <span className="app-title">{t('app.title')}</span>
           <div className="connection-indicator">
             <div 
               className="status-dot" 
               style={{ backgroundColor: getStatusColor() }}
             />
-            <Text type="secondary" style={{ fontSize: 11 }}>
+            <span className="status-text">
               {getStatusText()}
-            </Text>
+            </span>
           </div>
         </div>
       </div>

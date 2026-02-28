@@ -79,7 +79,7 @@ const ConnectionList: React.FC = () => {
   return (
     <div className="connection-list">
       <div className="connection-list-header">
-        <Text strong style={{ color: '#fff' }}>{t('connection.title')}</Text>
+        <Text strong>{t('connection.title')}</Text>
         <Button 
           type="primary" 
           icon={<PlusOutlined />} 
@@ -113,7 +113,7 @@ const ConnectionList: React.FC = () => {
                       <Text 
                         ellipsis 
                         className="connection-name"
-                        style={{ color: isActive ? '#1890ff' : '#fff' }}
+                        style={{ color: isActive ? '#1890ff' : undefined }}
                       >
                         {item.name}
                       </Text>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Card, Form, Input, Button, Space, Typography, message, Divider, Statistic, Tabs, Tag, Table, Popconfirm, Tooltip, Modal } from 'antd'
 import { SendOutlined, CopyOutlined, PlayCircleOutlined, StopOutlined, EditOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { useConnectionStore, useSettingsStore } from '../stores'
 import type { RequestOptions, RequestResult } from '../types/nats'
 import { formatJson } from '../utils/format'
@@ -17,6 +18,7 @@ interface ReplyService {
 }
 
 const RequestPanel: React.FC = () => {
+  const { t } = useTranslation()
   const [requestForm] = Form.useForm()
   const [replyForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -38,7 +40,7 @@ const RequestPanel: React.FC = () => {
     })
 
     const unsubscribeError = window.nats.onReplyError((data) => {
-      message.error(`回复服务错误: ${data.error}`)
+      message.error(`${t('request.replyServiceError', '回复服务错误')}: ${data.error}`)
     })
 
     return () => {
@@ -49,7 +51,7 @@ const RequestPanel: React.FC = () => {
 
   const handleRequest = async () => {
     if (!isConnected) {
-      message.error('未连接到 NATS 服务器')
+      message.error(t('request.notConnected', '未连接到 NATS 服务器'))
       return
     }
 
@@ -67,13 +69,13 @@ const RequestPanel: React.FC = () => {
       setResult(response)
       
       if (response.success) {
-        message.success(`请求成功 (${response.responseTime}ms)`)
+        message.success(t('request.requestSuccessTime', `请求成功 (${response.responseTime}ms)`))
       } else {
-        message.error(`请求失败: ${response.error}`)
+        message.error(`${t('request.requestFailed')}: ${response.error}`)
       }
     } catch (error) {
       if (error instanceof Error) {
-        message.error(`请求失败: ${error.message}`)
+        message.error(`${t('request.requestFailed')}: ${error.message}`)
       }
     } finally {
       setLoading(false)
@@ -83,13 +85,13 @@ const RequestPanel: React.FC = () => {
   const handleCopyResponse = () => {
     if (result?.response) {
       navigator.clipboard.writeText(result.response)
-      message.success('已复制到剪贴板')
+      message.success(t('common.copied'))
     }
   }
 
   const handleStartReplyService = async () => {
     if (!isConnected) {
-      message.error('未连接到 NATS 服务器')
+      message.error(t('request.notConnected', '未连接到 NATS 服务器'))
       return
     }
 
@@ -106,14 +108,14 @@ const RequestPanel: React.FC = () => {
           isRunning: true
         }
         setReplyServices(prev => [...prev, service])
-        message.success('回复服务已启动')
+        message.success(t('request.serviceStarted', '回复服务已启动'))
         replyForm.resetFields()
       } else {
-        message.error(`启动失败: ${response.error}`)
+        message.error(`${t('request.startFailed', '启动失败')}: ${response.error}`)
       }
     } catch (error) {
       if (error instanceof Error) {
-        message.error(`启动失败: ${error.message}`)
+        message.error(`${t('request.startFailed', '启动失败')}: ${error.message}`)
       }
     }
   }
@@ -122,9 +124,9 @@ const RequestPanel: React.FC = () => {
     const response = await window.nats.stopReplyService(id)
     if (response.success) {
       setReplyServices(prev => prev.filter(s => s.id !== id))
-      message.success('回复服务已停止')
+      message.success(t('request.serviceStopped', '回复服务已停止'))
     } else {
-      message.error(`停止失败: ${response.error}`)
+      message.error(`${t('request.stopFailed', '停止失败')}: ${response.error}`)
     }
   }
 
@@ -151,13 +153,13 @@ const RequestPanel: React.FC = () => {
         ))
         setEditModalVisible(false)
         setEditingService(null)
-        message.success('响应内容已更新')
+        message.success(t('request.responseUpdated', '响应内容已更新'))
       } else {
-        message.error(`更新失败: ${response.error}`)
+        message.error(`${t('request.updateFailed', '更新失败')}: ${response.error}`)
       }
     } catch (error) {
       if (error instanceof Error) {
-        message.error(`更新失败: ${error.message}`)
+        message.error(`${t('request.updateFailed', '更新失败')}: ${error.message}`)
       }
     }
   }
@@ -173,35 +175,35 @@ const RequestPanel: React.FC = () => {
 
   const replyColumns = [
     {
-      title: 'Subject',
+      title: t('request.subject'),
       dataIndex: 'subject',
       key: 'subject',
       width: 150,
       ellipsis: true
     },
     {
-      title: '状态',
+      title: t('request.status'),
       key: 'status',
       width: 80,
       render: (_: unknown, record: ReplyService) => (
         <Tag color={record.isRunning ? 'green' : 'default'}>
-          {record.isRunning ? '运行中' : '已停止'}
+          {record.isRunning ? t('request.running') : t('request.stopped')}
         </Tag>
       )
     },
     {
-      title: '回复次数',
+      title: t('request.replyCount'),
       dataIndex: 'replyCount',
       key: 'replyCount',
       width: 80
     },
     {
-      title: '操作',
+      title: t('common.edit'),
       key: 'actions',
       width: 120,
       render: (_: unknown, record: ReplyService) => (
         <Space size={0}>
-          <Tooltip title="编辑响应内容">
+          <Tooltip title={t('request.editResponse')}>
             <Button 
               type="text" 
               icon={<EditOutlined />}
@@ -209,12 +211,12 @@ const RequestPanel: React.FC = () => {
             />
           </Tooltip>
           <Popconfirm
-            title="确定停止此回复服务？"
+            title={t('request.confirmStop', '确定停止此回复服务？')}
             onConfirm={() => handleStopReplyService(record.id)}
-            okText="确定"
-            cancelText="取消"
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
           >
-            <Tooltip title="停止服务">
+            <Tooltip title={t('request.stopService')}>
               <Button type="text" danger icon={<StopOutlined />} />
             </Tooltip>
           </Popconfirm>
@@ -226,36 +228,36 @@ const RequestPanel: React.FC = () => {
   const tabItems = [
     {
       key: 'request',
-      label: '发送请求',
+      label: t('request.sendRequest'),
       children: (
         <>
           <Form form={requestForm} layout="vertical">
             <Form.Item
               name="subject"
-              label="Subject"
-              rules={[{ required: true, message: '请输入 Subject' }]}
+              label={t('request.subject')}
+              rules={[{ required: true, message: t('request.subjectRequired', '请输入主题') }]}
             >
-              <Input placeholder="例如: service.request" />
+              <Input placeholder={t('request.subjectPlaceholder', '例如: service.request')} />
             </Form.Item>
 
             <Form.Item
               name="payload"
-              label="请求内容"
-              rules={[{ required: true, message: '请输入请求内容' }]}
+              label={t('request.payload')}
+              rules={[{ required: true, message: t('request.payloadRequired', '请输入请求内容') }]}
             >
-              <TextArea rows={4} placeholder="输入 JSON 或文本请求" />
+              <TextArea rows={4} placeholder={t('request.payloadPlaceholder', '输入 JSON 或文本请求')} />
             </Form.Item>
 
             <Form.Item
               name="headers"
-              label="Headers (JSON 格式)"
+              label={t('request.headers')}
             >
               <TextArea rows={2} placeholder='{"key": "value"}' />
             </Form.Item>
 
             <Form.Item
               name="timeout"
-              label="超时时间 (毫秒)"
+              label={t('request.timeout')}
               initialValue={defaultTimeout}
             >
               <Input type="number" min={100} max={60000} />
@@ -269,7 +271,7 @@ const RequestPanel: React.FC = () => {
                 loading={loading}
                 disabled={!isConnected}
               >
-                发送请求
+                {t('request.send')}
               </Button>
             </Form.Item>
           </Form>
@@ -279,7 +281,7 @@ const RequestPanel: React.FC = () => {
               <Divider />
               <div className="response-section">
                 <div className="response-header">
-                  <Text strong>响应结果</Text>
+                  <Text strong>{t('request.response')}</Text>
                   {result.success && (
                     <Button 
                       type="text" 
@@ -287,7 +289,7 @@ const RequestPanel: React.FC = () => {
                       icon={<CopyOutlined />}
                       onClick={handleCopyResponse}
                     >
-                      复制
+                      {t('common.copy')}
                     </Button>
                   )}
                 </div>
@@ -298,7 +300,7 @@ const RequestPanel: React.FC = () => {
                       style={{
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-all',
-                        backgroundColor: '#1a1a2e',
+                        backgroundColor: 'var(--color-bg-container)',
                         padding: 12,
                         borderRadius: 4,
                         marginTop: 8
@@ -322,24 +324,24 @@ const RequestPanel: React.FC = () => {
     },
     {
       key: 'reply',
-      label: `回复服务 ${replyServices.length > 0 ? `(${replyServices.length})` : ''}`,
+      label: `${t('request.replyService')} ${replyServices.length > 0 ? `(${replyServices.length})` : ''}`,
       children: (
         <>
           <Form form={replyForm} layout="vertical">
             <Form.Item
               name="subject"
-              label="监听 Subject"
-              rules={[{ required: true, message: '请输入要监听的 Subject' }]}
+              label={t('request.listenSubject')}
+              rules={[{ required: true, message: t('request.listenSubjectRequired', '请输入要监听的 Subject') }]}
             >
-              <Input placeholder="例如: service.request" />
+              <Input placeholder={t('request.subjectPlaceholder', '例如: service.request')} />
             </Form.Item>
 
             <Form.Item
               name="responsePayload"
-              label="响应内容"
-              rules={[{ required: true, message: '请输入响应内容' }]}
+              label={t('request.responseContent')}
+              rules={[{ required: true, message: t('request.responseRequired', '请输入响应内容') }]}
             >
-              <TextArea rows={4} placeholder="输入 JSON 或文本响应" />
+              <TextArea rows={4} placeholder={t('request.responsePlaceholder', '输入 JSON 或文本响应')} />
             </Form.Item>
 
             <Form.Item>
@@ -349,7 +351,7 @@ const RequestPanel: React.FC = () => {
                 onClick={handleStartReplyService}
                 disabled={!isConnected}
               >
-                启动回复服务
+                {t('request.startService')}
               </Button>
             </Form.Item>
           </Form>
@@ -357,7 +359,7 @@ const RequestPanel: React.FC = () => {
           {replyServices.length > 0 && (
             <>
               <Divider />
-              <Text strong>运行中的回复服务</Text>
+              <Text strong>{t('request.runningServices')}</Text>
               <Table 
                 dataSource={replyServices} 
                 columns={replyColumns}
@@ -376,13 +378,13 @@ const RequestPanel: React.FC = () => {
   return (
     <>
       <Card 
-        title="Request / Reply" 
+        title={t('request.title')} 
         className="panel-card"
         extra={
           result && (
             <Space>
               <Statistic 
-                title="响应时间" 
+                title={t('request.responseTime')} 
                 value={result.responseTime} 
                 suffix="ms"
                 valueStyle={{ fontSize: 16 }}
@@ -395,28 +397,28 @@ const RequestPanel: React.FC = () => {
       </Card>
 
       <Modal
-        title="编辑响应内容"
+        title={t('request.editResponse')}
         open={editModalVisible}
         onCancel={() => {
           setEditModalVisible(false)
           setEditingService(null)
         }}
         onOk={handleSaveEdit}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={500}
       >
         {editingService && (
           <Form form={editForm} layout="vertical">
-            <Form.Item label="Subject">
+            <Form.Item label={t('request.subject')}>
               <Input value={editingService.subject} disabled />
             </Form.Item>
             <Form.Item
               name="responsePayload"
-              label="响应内容"
-              rules={[{ required: true, message: '请输入响应内容' }]}
+              label={t('request.responseContent')}
+              rules={[{ required: true, message: t('request.responseRequired', '请输入响应内容') }]}
             >
-              <TextArea rows={6} placeholder="输入 JSON 或文本响应" />
+              <TextArea rows={6} placeholder={t('request.responsePlaceholder', '输入 JSON 或文本响应')} />
             </Form.Item>
           </Form>
         )}

@@ -10,6 +10,7 @@ import {
   PlusOutlined,
   DeleteOutlined
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { useConnectionStore } from '../stores'
 import type { JetStreamInfo, ConsumerInfo, StoredMessage, StreamConfigOptions, ConsumerConfigOptions } from '../types/nats'
 import { formatBytes } from '../utils/format'
@@ -18,6 +19,7 @@ const { Text, Title } = Typography
 const { Option } = Select
 
 const JetStreamPanel: React.FC = () => {
+  const { t } = useTranslation()
   const { connectionState } = useConnectionStore()
   const [streams, setStreams] = useState<JetStreamInfo[]>([])
   const [consumers, setConsumers] = useState<ConsumerInfo[]>([])
@@ -126,12 +128,12 @@ const JetStreamPanel: React.FC = () => {
       
       const result = await window.nats.createStream(options)
       if (result.success) {
-        message.success('Stream 创建成功')
+        message.success(t('jetstream.createStream.createSuccess'))
         setCreateStreamModalVisible(false)
         streamForm.resetFields()
         checkJetStreamAndLoad()
       } else {
-        message.error(`创建失败: ${result.error}`)
+        message.error(`${t('jetstream.createStream.createFailed')}: ${result.error}`)
       }
     } catch (error) {
       console.error('Form validation failed:', error)
@@ -141,14 +143,14 @@ const JetStreamPanel: React.FC = () => {
   const handleDeleteStream = async (streamName: string) => {
     const result = await window.nats.deleteStream(streamName)
     if (result.success) {
-      message.success('Stream 已删除')
+      message.success(t('jetstream.createStream.deleteSuccess'))
       if (selectedStream === streamName) {
         setSelectedStream(null)
         setConsumers([])
       }
       checkJetStreamAndLoad()
     } else {
-      message.error(`删除失败: ${result.error}`)
+      message.error(`${t('jetstream.createStream.deleteFailed')}: ${result.error}`)
     }
   }
 
@@ -170,12 +172,12 @@ const JetStreamPanel: React.FC = () => {
       
       const result = await window.nats.createConsumer(options)
       if (result.success) {
-        message.success('Consumer 创建成功')
+        message.success(t('jetstream.createConsumer.createSuccess'))
         setCreateConsumerModalVisible(false)
         consumerForm.resetFields()
         loadConsumers(selectedStream)
       } else {
-        message.error(`创建失败: ${result.error}`)
+        message.error(`${t('jetstream.createConsumer.createFailed')}: ${result.error}`)
       }
     } catch (error) {
       console.error('Form validation failed:', error)
@@ -187,10 +189,10 @@ const JetStreamPanel: React.FC = () => {
     
     const result = await window.nats.deleteConsumer(selectedStream, consumerName)
     if (result.success) {
-      message.success('Consumer 已删除')
+      message.success(t('jetstream.createConsumer.deleteSuccess'))
       loadConsumers(selectedStream)
     } else {
-      message.error(`删除失败: ${result.error}`)
+      message.error(`${t('jetstream.createConsumer.deleteFailed')}: ${result.error}`)
     }
   }
 
@@ -198,15 +200,15 @@ const JetStreamPanel: React.FC = () => {
     if (!isConnected) {
       return {
         icon: <ApiOutlined style={{ fontSize: 48, color: '#666' }} />,
-        title: '未连接到 NATS 服务器',
-        description: '请先连接到 NATS 服务器后再使用 JetStream 功能'
+        title: t('jetstream.notConnected'),
+        description: t('jetstream.notConnectedDesc', '请先连接到 NATS 服务器后再使用 JetStream 功能')
       }
     }
     if (jsAvailable === false) {
       return {
         icon: <CloudOutlined style={{ fontSize: 48, color: '#faad14' }} />,
-        title: 'JetStream 未启用',
-        description: '当前 NATS 服务器未启用 JetStream 功能，请在服务器配置中开启 JetStream'
+        title: t('jetstream.notAvailable'),
+        description: t('jetstream.notAvailableDesc')
       }
     }
     return null
@@ -217,7 +219,7 @@ const JetStreamPanel: React.FC = () => {
 
   const streamColumns = [
     {
-      title: 'Stream 名称',
+      title: t('jetstream.streamName'),
       dataIndex: 'name',
       key: 'name',
       render: (name: string) => (
@@ -227,7 +229,7 @@ const JetStreamPanel: React.FC = () => {
       )
     },
     {
-      title: 'Subjects',
+      title: t('jetstream.subjects'),
       dataIndex: 'subjects',
       key: 'subjects',
       render: (subjects: string[]) => (
@@ -237,32 +239,32 @@ const JetStreamPanel: React.FC = () => {
       )
     },
     {
-      title: '消息数',
+      title: t('jetstream.messageCount'),
       dataIndex: 'messages',
       key: 'messages',
       render: (count: number) => count.toLocaleString()
     },
     {
-      title: '大小',
+      title: t('jetstream.size'),
       dataIndex: 'bytes',
       key: 'bytes',
       render: (bytes: number) => formatBytes(bytes)
     },
     {
-      title: '保留策略',
+      title: t('jetstream.retention'),
       dataIndex: 'retention',
       key: 'retention'
     },
     {
-      title: '操作',
+      title: t('jetstream.actions'),
       key: 'actions',
       width: 80,
       render: (_: unknown, record: JetStreamInfo) => (
         <Popconfirm
-          title="确定删除此 Stream？"
+          title={t('jetstream.confirmDeleteStream')}
           onConfirm={() => handleDeleteStream(record.name)}
-          okText="确定"
-          cancelText="取消"
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
         >
           <Button type="text" danger icon={<DeleteOutlined />} />
         </Popconfirm>
@@ -272,23 +274,23 @@ const JetStreamPanel: React.FC = () => {
 
   const consumerColumns = [
     {
-      title: 'Consumer 名称',
+      title: t('jetstream.consumerName'),
       dataIndex: 'name',
       key: 'name'
     },
     {
-      title: 'ACK 策略',
+      title: t('jetstream.ackPolicy'),
       dataIndex: 'ackPolicy',
       key: 'ackPolicy'
     },
     {
-      title: '待处理',
+      title: t('jetstream.pending'),
       dataIndex: 'pending',
       key: 'pending',
       render: (pending: number) => pending.toLocaleString()
     },
     {
-      title: '操作',
+      title: t('jetstream.actions'),
       key: 'actions',
       render: (_: unknown, record: ConsumerInfo) => (
         <Space>
@@ -297,13 +299,13 @@ const JetStreamPanel: React.FC = () => {
             icon={<MessageOutlined />}
             onClick={() => handleFetchMessage(record.name)}
           >
-            拉取
+            {t('jetstream.fetchMessage')}
           </Button>
           <Popconfirm
-            title="确定删除此 Consumer？"
+            title={t('jetstream.confirmDeleteConsumer')}
             onConfirm={() => handleDeleteConsumer(record.name)}
-            okText="确定"
-            cancelText="取消"
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
           >
             <Button type="text" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -315,7 +317,7 @@ const JetStreamPanel: React.FC = () => {
   return (
     <div className="jetstream-wrapper">
       <Card 
-        title="JetStream 管理" 
+        title={t('jetstream.title')} 
         className="panel-card"
         extra={
           <Space>
@@ -325,7 +327,7 @@ const JetStreamPanel: React.FC = () => {
               loading={loading}
               disabled={!isConnected || jsAvailable === false}
             >
-              刷新
+              {t('jetstream.refresh')}
             </Button>
             <Button 
               type="primary" 
@@ -333,7 +335,7 @@ const JetStreamPanel: React.FC = () => {
               onClick={() => setCreateStreamModalVisible(true)}
               disabled={!isConnected || jsAvailable === false}
             >
-              新建 Stream
+              {t('jetstream.newStream')}
             </Button>
           </Space>
         }
@@ -358,7 +360,7 @@ const JetStreamPanel: React.FC = () => {
               items={[
                 {
                   key: 'streams',
-                  label: `Streams ${streams.length > 0 ? `(${streams.length})` : ''}`,
+                  label: `${t('jetstream.streams')} ${streams.length > 0 ? `(${streams.length})` : ''}`,
                   children: (
                     <Table 
                       dataSource={streams} 
@@ -367,13 +369,13 @@ const JetStreamPanel: React.FC = () => {
                       loading={loading && !showOverlay}
                       pagination={false}
                       size="small"
-                      locale={{ emptyText: '暂无 Stream' }}
+                      locale={{ emptyText: t('jetstream.noStreams') }}
                     />
                   )
                 },
                 {
                   key: 'consumers',
-                  label: `Consumers ${selectedStream ? `(${selectedStream})` : ''}`,
+                  label: `${t('jetstream.consumers')} ${selectedStream ? `(${selectedStream})` : ''}`,
                   children: selectedStream ? (
                     <div>
                       <div style={{ marginBottom: 12 }}>
@@ -383,7 +385,7 @@ const JetStreamPanel: React.FC = () => {
                           icon={<PlusOutlined />}
                           onClick={() => setCreateConsumerModalVisible(true)}
                         >
-                          新建 Consumer
+                          {t('jetstream.newConsumer')}
                         </Button>
                       </div>
                       <Table 
@@ -393,12 +395,12 @@ const JetStreamPanel: React.FC = () => {
                         loading={loading && !showOverlay}
                         pagination={false}
                         size="small"
-                        locale={{ emptyText: '暂无 Consumer' }}
+                        locale={{ emptyText: t('jetstream.noConsumers') }}
                       />
                     </div>
                   ) : (
                     <div className="jetstream-placeholder">
-                      <Text type="secondary">请先选择一个 Stream 查看其 Consumers</Text>
+                      <Text type="secondary">{t('jetstream.selectStream')}</Text>
                     </div>
                   )
                 }
@@ -409,196 +411,196 @@ const JetStreamPanel: React.FC = () => {
       </Card>
 
       <Modal
-        title="新建 Stream"
+        title={t('jetstream.createStream.title')}
         open={createStreamModalVisible}
         onCancel={() => {
           setCreateStreamModalVisible(false)
           streamForm.resetFields()
         }}
         onOk={handleCreateStream}
-        okText="创建"
-        cancelText="取消"
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
         width={500}
       >
         <Form form={streamForm} layout="vertical">
           <Form.Item
             name="name"
-            label="Stream 名称"
-            rules={[{ required: true, message: '请输入 Stream 名称' }]}
+            label={t('jetstream.createStream.name')}
+            rules={[{ required: true, message: t('jetstream.createStream.nameRequired', '请输入 Stream 名称') }]}
           >
-            <Input placeholder="例如: MY_STREAM" />
+            <Input placeholder={t('jetstream.createStream.namePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="subjects"
-            label="Subjects (逗号分隔)"
-            rules={[{ required: true, message: '请输入至少一个 Subject' }]}
+            label={t('jetstream.createStream.subjectsLabel')}
+            rules={[{ required: true, message: t('jetstream.createStream.subjectsRequired', '请输入至少一个 Subject') }]}
           >
-            <Input placeholder="例如: orders.*, events.>" />
+            <Input placeholder={t('jetstream.createStream.subjectsPlaceholder')} />
           </Form.Item>
           <Form.Item
             name="retention"
-            label="保留策略"
+            label={t('jetstream.createStream.retentionPolicy')}
             initialValue="limits"
           >
             <Select>
-              <Option value="limits">Limits</Option>
-              <Option value="interest">Interest</Option>
-              <Option value="workqueue">Work Queue</Option>
+              <Option value="limits">{t('jetstream.createStream.limits')}</Option>
+              <Option value="interest">{t('jetstream.createStream.interest')}</Option>
+              <Option value="workqueue">{t('jetstream.createStream.workQueue')}</Option>
             </Select>
           </Form.Item>
           <Form.Item
             name="storage"
-            label="存储类型"
+            label={t('jetstream.createStream.storageType')}
             initialValue="file"
           >
             <Select>
-              <Option value="file">File</Option>
-              <Option value="memory">Memory</Option>
+              <Option value="file">{t('jetstream.createStream.file')}</Option>
+              <Option value="memory">{t('jetstream.createStream.memory')}</Option>
             </Select>
           </Form.Item>
           <Form.Item
             name="replicas"
-            label="副本数"
+            label={t('jetstream.createStream.replicas')}
             initialValue={1}
           >
             <InputNumber min={1} max={5} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             name="maxMsgs"
-            label="最大消息数"
+            label={t('jetstream.createStream.maxMessages')}
           >
-            <InputNumber min={-1} style={{ width: '100%' }} placeholder="-1 表示无限制" />
+            <InputNumber min={-1} style={{ width: '100%' }} placeholder={t('jetstream.createStream.unlimited')} />
           </Form.Item>
           <Form.Item
             name="maxBytes"
-            label="最大字节数"
+            label={t('jetstream.createStream.maxBytes')}
           >
-            <InputNumber min={-1} style={{ width: '100%' }} placeholder="-1 表示无限制" />
+            <InputNumber min={-1} style={{ width: '100%' }} placeholder={t('jetstream.createStream.unlimited')} />
           </Form.Item>
           <Form.Item
             name="maxAge"
-            label="最大保留时间 (纳秒)"
+            label={t('jetstream.createStream.maxAge')}
           >
-            <InputNumber min={0} style={{ width: '100%' }} placeholder="0 表示无限制" />
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="0 = unlimited" />
           </Form.Item>
           <Form.Item
             name="description"
-            label="描述"
+            label={t('jetstream.createStream.description')}
           >
-            <Input placeholder="可选" />
+            <Input placeholder={t('common.optional', '可选')} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={`新建 Consumer (Stream: ${selectedStream})`}
+        title={`${t('jetstream.createConsumer.title')} (Stream: ${selectedStream})`}
         open={createConsumerModalVisible}
         onCancel={() => {
           setCreateConsumerModalVisible(false)
           consumerForm.resetFields()
         }}
         onOk={handleCreateConsumer}
-        okText="创建"
-        cancelText="取消"
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
         width={500}
       >
         <Form form={consumerForm} layout="vertical">
           <Form.Item
             name="name"
-            label="Consumer 名称"
-            rules={[{ required: true, message: '请输入 Consumer 名称' }]}
+            label={t('jetstream.createConsumer.name')}
+            rules={[{ required: true, message: t('jetstream.createConsumer.nameRequired', '请输入 Consumer 名称') }]}
           >
-            <Input placeholder="例如: my_consumer" />
+            <Input placeholder={t('jetstream.createConsumer.namePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="ackPolicy"
-            label="ACK 策略"
+            label={t('jetstream.createConsumer.ackPolicy')}
             initialValue="explicit"
           >
             <Select>
-              <Option value="none">None</Option>
-              <Option value="all">All</Option>
-              <Option value="explicit">Explicit</Option>
+              <Option value="none">{t('jetstream.createConsumer.none')}</Option>
+              <Option value="all">{t('jetstream.createConsumer.all')}</Option>
+              <Option value="explicit">{t('jetstream.createConsumer.explicit')}</Option>
             </Select>
           </Form.Item>
           <Form.Item
             name="deliverPolicy"
-            label="投递策略"
+            label={t('jetstream.createConsumer.deliverPolicy')}
             initialValue="all"
           >
             <Select>
-              <Option value="all">All</Option>
-              <Option value="last">Last</Option>
-              <Option value="new">New</Option>
+              <Option value="all">{t('jetstream.createConsumer.all')}</Option>
+              <Option value="last">{t('jetstream.createConsumer.last')}</Option>
+              <Option value="new">{t('jetstream.createConsumer.new')}</Option>
             </Select>
           </Form.Item>
           <Form.Item
             name="replayPolicy"
-            label="重放策略"
+            label={t('jetstream.createConsumer.replayPolicy')}
             initialValue="instant"
           >
             <Select>
-              <Option value="instant">Instant</Option>
-              <Option value="original">Original</Option>
+              <Option value="instant">{t('jetstream.createConsumer.instant')}</Option>
+              <Option value="original">{t('jetstream.createConsumer.original')}</Option>
             </Select>
           </Form.Item>
           <Form.Item
             name="filterSubject"
-            label="过滤 Subject"
+            label={t('jetstream.createConsumer.filterSubject')}
           >
-            <Input placeholder="可选，例如: orders.created" />
+            <Input placeholder={t('jetstream.createConsumer.filterSubjectPlaceholder', '可选，例如: orders.created')} />
           </Form.Item>
           <Form.Item
             name="deliverSubject"
-            label="投递 Subject (Push 模式)"
+            label={t('jetstream.createConsumer.deliverSubject')}
           >
-            <Input placeholder="可选，填写后为 Push 模式" />
+            <Input placeholder={t('jetstream.createConsumer.deliverSubjectPlaceholder', '可选，填写后为 Push 模式')} />
           </Form.Item>
           <Form.Item
             name="maxDeliver"
-            label="最大投递次数"
+            label={t('jetstream.createConsumer.maxDeliver')}
             initialValue={-1}
           >
-            <InputNumber min={-1} style={{ width: '100%' }} placeholder="-1 表示无限制" />
+            <InputNumber min={-1} style={{ width: '100%' }} placeholder={t('jetstream.createStream.unlimited')} />
           </Form.Item>
           <Form.Item
             name="ackWait"
-            label="ACK 等待时间 (纳秒)"
+            label={t('jetstream.createConsumer.ackWait')}
           >
-            <InputNumber min={0} style={{ width: '100%' }} placeholder="默认 30 秒" />
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="default 30s" />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="消息详情"
+        title={t('jetstream.messageDetail')}
         open={messageModalVisible}
         onCancel={() => setMessageModalVisible(false)}
         footer={
           currentMessage && (
             <Space>
               <Popconfirm
-                title="确认 ACK 此消息？"
+                title={t('jetstream.confirmAck')}
                 onConfirm={() => handleAck()}
-                okText="确认"
-                cancelText="取消"
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
               >
                 <Button type="primary" icon={<CheckOutlined />}>
-                  ACK
+                  {t('jetstream.ack')}
                 </Button>
               </Popconfirm>
               <Popconfirm
-                title="确认 NACK 此消息？"
+                title={t('jetstream.confirmNak')}
                 onConfirm={() => handleNak()}
-                okText="确认"
-                cancelText="取消"
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
               >
                 <Button danger icon={<CloseOutlined />}>
-                  NACK
+                  {t('jetstream.nak')}
                 </Button>
               </Popconfirm>
               <Button onClick={() => setMessageModalVisible(false)}>
-                关闭
+                {t('common.close')}
               </Button>
             </Space>
           )
@@ -607,16 +609,16 @@ const JetStreamPanel: React.FC = () => {
       >
         {currentMessage && (
           <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="Subject">
+            <Descriptions.Item label={t('jetstream.subjects')}>
               {currentMessage.subject}
             </Descriptions.Item>
-            <Descriptions.Item label="Sequence">
+            <Descriptions.Item label={t('jetstream.sequence')}>
               {currentMessage.sequence}
             </Descriptions.Item>
-            <Descriptions.Item label="时间戳">
+            <Descriptions.Item label={t('jetstream.timestamp')}>
               {currentMessage.timestamp.toLocaleString()}
             </Descriptions.Item>
-            <Descriptions.Item label="Payload">
+            <Descriptions.Item label={t('jetstream.payload')}>
               <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                 {currentMessage.payload}
               </pre>

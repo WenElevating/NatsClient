@@ -10,6 +10,7 @@ import {
   CopyOutlined,
   ApiOutlined
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { useConnectionStore } from '../stores'
 import type { KvBucketInfo, KvEntry } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
@@ -17,6 +18,7 @@ import { formatTimestamp, formatJson } from '../utils/format'
 const { Text, Title } = Typography
 
 const KvStorePanel: React.FC = () => {
+  const { t } = useTranslation()
   const { connectionState } = useConnectionStore()
   const [buckets, setBuckets] = useState<KvBucketInfo[]>([])
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null)
@@ -79,7 +81,7 @@ const KvStorePanel: React.FC = () => {
       }
       setEntries(entriesMap)
     } else {
-      message.error(`加载 Keys 失败: ${result.error}`)
+      message.error(`${t('kvstore.loadKeysFailed', '加载 Keys 失败')}: ${result.error}`)
     }
   }
 
@@ -99,12 +101,12 @@ const KvStorePanel: React.FC = () => {
       })
       
       if (result.success) {
-        message.success('Bucket 创建成功')
+        message.success(t('kvstore.createBucket.createSuccess'))
         setCreateBucketModalVisible(false)
         createForm.resetFields()
         checkJetStreamAndLoad()
       } else {
-        message.error(`创建失败: ${result.error}`)
+        message.error(`${t('kvstore.createBucket.createFailed')}: ${result.error}`)
       }
     } catch (error) {
       console.error('Form validation failed:', error)
@@ -114,7 +116,7 @@ const KvStorePanel: React.FC = () => {
   const handleDeleteBucket = async (bucketName: string) => {
     const result = await window.nats.deleteKvBucket(bucketName)
     if (result.success) {
-      message.success('Bucket 已删除')
+      message.success(t('kvstore.createBucket.deleteSuccess'))
       if (selectedBucket === bucketName) {
         setSelectedBucket(null)
         setKeys([])
@@ -122,7 +124,7 @@ const KvStorePanel: React.FC = () => {
       }
       checkJetStreamAndLoad()
     } else {
-      message.error(`删除失败: ${result.error}`)
+      message.error(`${t('kvstore.createBucket.deleteFailed')}: ${result.error}`)
     }
   }
 
@@ -134,12 +136,12 @@ const KvStorePanel: React.FC = () => {
       const result = await window.nats.putKvEntry(selectedBucket, values.key, values.value)
       
       if (result.success) {
-        message.success('Key 添加成功')
+        message.success(t('kvstore.addKey.addSuccess'))
         setAddKeyModalVisible(false)
         addForm.resetFields()
         loadKeys(selectedBucket)
       } else {
-        message.error(`添加失败: ${result.error}`)
+        message.error(`${t('kvstore.addKey.addFailed')}: ${result.error}`)
       }
     } catch (error) {
       console.error('Form validation failed:', error)
@@ -151,10 +153,10 @@ const KvStorePanel: React.FC = () => {
     
     const result = await window.nats.deleteKvEntry(selectedBucket, key)
     if (result.success) {
-      message.success('Key 已删除')
+      message.success(t('kvstore.addKey.deleteSuccess'))
       loadKeys(selectedBucket)
     } else {
-      message.error(`删除失败: ${result.error}`)
+      message.error(`${t('kvstore.addKey.deleteFailed')}: ${result.error}`)
     }
   }
 
@@ -166,13 +168,13 @@ const KvStorePanel: React.FC = () => {
       setHistory(result.history)
       setHistoryModalVisible(true)
     } else {
-      message.error(`获取历史失败: ${result.error}`)
+      message.error(`${t('kvstore.loadHistoryFailed', '获取历史失败')}: ${result.error}`)
     }
   }
 
   const handleCopyValue = (value: string) => {
     navigator.clipboard.writeText(value)
-    message.success('已复制到剪贴板')
+    message.success(t('common.copied'))
   }
 
   const truncateValue = (value: string): string => {
@@ -184,15 +186,15 @@ const KvStorePanel: React.FC = () => {
     if (!isConnected) {
       return {
         icon: <ApiOutlined style={{ fontSize: 48, color: '#666' }} />,
-        title: '未连接到 NATS 服务器',
-        description: '请先连接到 NATS 服务器后再使用 KV Store 功能'
+        title: t('kvstore.notConnected', '未连接到 NATS 服务器'),
+        description: t('kvstore.notConnectedDesc', '请先连接到 NATS 服务器后再使用 KV Store 功能')
       }
     }
     if (jsAvailable === false) {
       return {
         icon: <DatabaseOutlined style={{ fontSize: 48, color: '#faad14' }} />,
-        title: 'JetStream 未启用',
-        description: 'KV Store 需要 JetStream 支持。请在 NATS 服务器配置中开启 JetStream'
+        title: t('jetstream.notAvailable'),
+        description: t('kvstore.jsRequired', 'KV Store 需要 JetStream 支持。请在 NATS 服务器配置中开启 JetStream')
       }
     }
     return null
@@ -203,7 +205,7 @@ const KvStorePanel: React.FC = () => {
 
   const bucketColumns = [
     {
-      title: 'Bucket',
+      title: t('kvstore.bucket'),
       dataIndex: 'bucket',
       key: 'bucket',
       render: (name: string) => (
@@ -213,40 +215,40 @@ const KvStorePanel: React.FC = () => {
       )
     },
     {
-      title: 'Values',
+      title: t('kvstore.values'),
       dataIndex: 'values',
       key: 'values',
       width: 80
     },
     {
-      title: 'History',
+      title: t('kvstore.history'),
       dataIndex: 'history',
       key: 'history',
       width: 80
     },
     {
-      title: 'TTL',
+      title: t('kvstore.ttl'),
       dataIndex: 'ttl',
       key: 'ttl',
       width: 100,
       render: (ttl: number) => ttl > 0 ? `${Math.floor(ttl / 1000000000)}s` : '∞'
     },
     {
-      title: 'Storage',
+      title: t('kvstore.storage'),
       dataIndex: 'backingStore',
       key: 'backingStore',
       width: 80
     },
     {
-      title: '操作',
+      title: t('jetstream.actions'),
       key: 'actions',
       width: 80,
       render: (_: unknown, record: KvBucketInfo) => (
         <Popconfirm
-          title="确定删除此 Bucket？"
+          title={t('kvstore.confirmDeleteBucket')}
           onConfirm={() => handleDeleteBucket(record.bucket)}
-          okText="确定"
-          cancelText="取消"
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
         >
           <Button type="text" danger icon={<DeleteOutlined />} />
         </Popconfirm>
@@ -256,14 +258,14 @@ const KvStorePanel: React.FC = () => {
 
   const keyColumns = [
     {
-      title: 'Key',
+      title: t('kvstore.key'),
       dataIndex: 'key',
       key: 'key',
       width: 200,
       ellipsis: true
     },
     {
-      title: 'Value',
+      title: t('kvstore.value'),
       key: 'value',
       render: (_: unknown, key: string) => {
         const entry = entries.get(key)
@@ -277,7 +279,7 @@ const KvStorePanel: React.FC = () => {
                 {formatJson(value) || value}
               </pre>
             }
-            title="完整内容"
+            title={t('kvstore.fullContent')}
           >
             <Text code style={{ cursor: 'pointer' }}>{truncated}</Text>
           </Popover>
@@ -285,18 +287,18 @@ const KvStorePanel: React.FC = () => {
       }
     },
     {
-      title: 'Revision',
+      title: t('kvstore.revision'),
       key: 'revision',
       width: 80,
       render: (_: unknown, key: string) => entries.get(key)?.revision || '-'
     },
     {
-      title: '操作',
+      title: t('jetstream.actions'),
       key: 'actions',
       width: 120,
       render: (_: unknown, key: string) => (
         <Space size={0}>
-          <Tooltip title="查看历史">
+          <Tooltip title={t('kvstore.viewHistory')}>
             <Button 
               type="text" 
               size="small"
@@ -304,7 +306,7 @@ const KvStorePanel: React.FC = () => {
               onClick={() => handleViewHistory(key)}
             />
           </Tooltip>
-          <Tooltip title="复制值">
+          <Tooltip title={t('kvstore.copyValue')}>
             <Button 
               type="text" 
               size="small"
@@ -313,12 +315,12 @@ const KvStorePanel: React.FC = () => {
             />
           </Tooltip>
           <Popconfirm
-            title="确定删除此 Key？"
+            title={t('kvstore.confirmDeleteKey')}
             onConfirm={() => handleDeleteKey(key)}
-            okText="确定"
-            cancelText="取消"
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
           >
-            <Tooltip title="删除">
+            <Tooltip title={t('common.delete')}>
               <Button type="text" size="small" danger icon={<DeleteOutlined />} />
             </Tooltip>
           </Popconfirm>
@@ -329,13 +331,13 @@ const KvStorePanel: React.FC = () => {
 
   const historyColumns = [
     {
-      title: 'Revision',
+      title: t('kvstore.revision'),
       dataIndex: 'revision',
       key: 'revision',
       width: 80
     },
     {
-      title: 'Operation',
+      title: t('kvstore.operation'),
       dataIndex: 'operation',
       key: 'operation',
       width: 80,
@@ -346,7 +348,7 @@ const KvStorePanel: React.FC = () => {
       )
     },
     {
-      title: 'Value',
+      title: t('kvstore.value'),
       dataIndex: 'value',
       key: 'value',
       render: (value: string) => (
@@ -356,7 +358,7 @@ const KvStorePanel: React.FC = () => {
       )
     },
     {
-      title: 'Created',
+      title: t('kvstore.created'),
       dataIndex: 'created',
       key: 'created',
       width: 150,
@@ -369,7 +371,7 @@ const KvStorePanel: React.FC = () => {
       title={
         <Space>
           <DatabaseOutlined />
-          <span>Key/Value Store</span>
+          <span>{t('kvstore.title')}</span>
         </Space>
       }
       className="panel-card"
@@ -381,7 +383,7 @@ const KvStorePanel: React.FC = () => {
             loading={loading}
             disabled={!isConnected || jsAvailable === false}
           >
-            刷新
+            {t('kvstore.refresh')}
           </Button>
           <Button 
             type="primary" 
@@ -389,7 +391,7 @@ const KvStorePanel: React.FC = () => {
             onClick={() => setCreateBucketModalVisible(true)}
             disabled={!isConnected || jsAvailable === false}
           >
-            新建 Bucket
+            {t('kvstore.newBucket')}
           </Button>
         </Space>
       }
@@ -411,7 +413,7 @@ const KvStorePanel: React.FC = () => {
         
         <div className={showOverlay ? 'jetstream-disabled' : ''}>
           {buckets.length === 0 && !showOverlay ? (
-            <Empty description="暂无 KV Bucket，请新建一个" />
+            <Empty description={t('kvstore.noBuckets')} />
           ) : (
             <>
               <Table 
@@ -433,7 +435,7 @@ const KvStorePanel: React.FC = () => {
                   title={
                     <Space>
                       <KeyOutlined />
-                      <span>Keys in {selectedBucket}</span>
+                      <span>{t('kvstore.keys')} in {selectedBucket}</span>
                       <Tag>{keys.length}</Tag>
                     </Space>
                   }
@@ -444,13 +446,13 @@ const KvStorePanel: React.FC = () => {
                       icon={<PlusOutlined />}
                       onClick={() => setAddKeyModalVisible(true)}
                     >
-                      添加 Key
+                      {t('kvstore.newKey')}
                     </Button>
                   }
                   style={{ marginTop: 16 }}
                 >
                   {keys.length === 0 ? (
-                    <Empty description="暂无 Key" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <Empty description={t('kvstore.noKeys')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
                   ) : (
                     <Table 
                       dataSource={keys} 
@@ -468,40 +470,40 @@ const KvStorePanel: React.FC = () => {
       </div>
 
       <Modal
-        title="新建 Bucket"
+        title={t('kvstore.createBucket.title')}
         open={createBucketModalVisible}
         onCancel={() => {
           setCreateBucketModalVisible(false)
           createForm.resetFields()
         }}
         onOk={handleCreateBucket}
-        okText="创建"
-        cancelText="取消"
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
       >
         <Form form={createForm} layout="vertical">
           <Form.Item
             name="name"
-            label="Bucket 名称"
-            rules={[{ required: true, message: '请输入 Bucket 名称' }]}
+            label={t('kvstore.createBucket.name')}
+            rules={[{ required: true, message: t('kvstore.createBucket.nameRequired', '请输入 Bucket 名称') }]}
           >
-            <Input placeholder="例如: my_config" />
+            <Input placeholder={t('kvstore.createBucket.namePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="description"
-            label="描述"
+            label={t('kvstore.createBucket.description')}
           >
-            <Input placeholder="可选" />
+            <Input placeholder={t('common.optional', '可选')} />
           </Form.Item>
           <Form.Item
             name="history"
-            label="历史记录数"
+            label={t('kvstore.createBucket.historyCount')}
             initialValue={10}
           >
             <InputNumber min={1} max={100} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             name="ttl"
-            label="TTL (秒，0 表示永不过期)"
+            label={t('kvstore.createBucket.ttlSeconds')}
             initialValue={0}
           >
             <InputNumber min={0} style={{ width: '100%' }} />
@@ -510,36 +512,36 @@ const KvStorePanel: React.FC = () => {
       </Modal>
 
       <Modal
-        title="添加 Key"
+        title={t('kvstore.addKey.title')}
         open={addKeyModalVisible}
         onCancel={() => {
           setAddKeyModalVisible(false)
           addForm.resetFields()
         }}
         onOk={handleAddKey}
-        okText="添加"
-        cancelText="取消"
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
       >
         <Form form={addForm} layout="vertical">
           <Form.Item
             name="key"
-            label="Key"
-            rules={[{ required: true, message: '请输入 Key' }]}
+            label={t('kvstore.key')}
+            rules={[{ required: true, message: t('kvstore.addKey.keyRequired', '请输入 Key') }]}
           >
-            <Input placeholder="例如: app.config" />
+            <Input placeholder={t('kvstore.addKey.keyPlaceholder')} />
           </Form.Item>
           <Form.Item
             name="value"
-            label="Value"
-            rules={[{ required: true, message: '请输入 Value' }]}
+            label={t('kvstore.value')}
+            rules={[{ required: true, message: t('kvstore.addKey.valueRequired', '请输入 Value') }]}
           >
-            <Input.TextArea rows={4} placeholder="输入 JSON 或文本" />
+            <Input.TextArea rows={4} placeholder={t('kvstore.addKey.valuePlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="历史记录"
+        title={t('kvstore.historyTitle')}
         open={historyModalVisible}
         onCancel={() => {
           setHistoryModalVisible(false)

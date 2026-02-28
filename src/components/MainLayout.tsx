@@ -118,7 +118,7 @@ const MainLayout: React.FC = () => {
       label: (
         <span className="tab-label">
           <DatabaseOutlined />
-          <span>JetStream</span>
+          <span>{t('jetstream.title')}</span>
         </span>
       ),
       children: <JetStreamPanel />
@@ -128,7 +128,7 @@ const MainLayout: React.FC = () => {
       label: (
         <span className="tab-label">
           <KeyOutlined />
-          <span>KV Store</span>
+          <span>{t('kvstore.title')}</span>
         </span>
       ),
       children: <KvStorePanel />

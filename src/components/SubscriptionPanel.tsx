@@ -10,6 +10,7 @@ import {
   CopyOutlined,
   EyeOutlined
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { useConnectionStore, useSubscriptionStore, useSettingsStore } from '../stores'
 import type { Subscription, NatsMessage } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
@@ -17,6 +18,7 @@ import { formatTimestamp, formatJson } from '../utils/format'
 const { Text } = Typography
 
 const SubscriptionPanel: React.FC = () => {
+  const { t } = useTranslation()
   const [subject, setSubject] = useState('')
   const { connectionState } = useConnectionStore()
   const { 
@@ -70,7 +72,7 @@ const SubscriptionPanel: React.FC = () => {
             addSubscription(sub)
           }
         }
-        message.success(`已自动恢复 ${savedSubjects.length} 个订阅`)
+        message.success(t('subscribe.autoRestore', `已自动恢复 ${savedSubjects.length} 个订阅`))
       }
     }
     resubscribe()
@@ -78,12 +80,12 @@ const SubscriptionPanel: React.FC = () => {
 
   const handleSubscribe = useCallback(async () => {
     if (!subject.trim()) {
-      message.error('请输入 Subject')
+      message.error(t('subscribe.subjectRequired'))
       return
     }
 
     if (!isConnected) {
-      message.error('未连接到 NATS 服务器')
+      message.error(t('subscribe.notConnected', '未连接到 NATS 服务器'))
       return
     }
 
@@ -100,11 +102,11 @@ const SubscriptionPanel: React.FC = () => {
       saveSubject(subject)
       setActiveSubscriptionId(sub.id)
       setSubject('')
-      message.success(`已订阅: ${subject}`)
+      message.success(t('subscribe.subscribeSuccess'))
     } else {
-      message.error(`订阅失败: ${result.error}`)
+      message.error(`${t('subscribe.subscribeFailed')}: ${result.error}`)
     }
-  }, [subject, isConnected, addSubscription, saveSubject])
+  }, [subject, isConnected, addSubscription, saveSubject, t])
 
   const handleUnsubscribe = useCallback(async (id: string) => {
     const result = await window.nats.unsubscribe(id)
@@ -113,15 +115,15 @@ const SubscriptionPanel: React.FC = () => {
       if (activeSubscriptionId === id) {
         setActiveSubscriptionId(subscriptions.length > 1 ? subscriptions.find(s => s.id !== id)?.id || null : null)
       }
-      message.success('已取消订阅')
+      message.success(t('subscribe.unsubscribeSuccess', '已取消订阅'))
     } else {
-      message.error(`取消订阅失败: ${result.error}`)
+      message.error(`${t('subscribe.unsubscribeFailed', '取消订阅失败')}: ${result.error}`)
     }
-  }, [activeSubscriptionId, removeSubscription, subscriptions])
+  }, [activeSubscriptionId, removeSubscription, subscriptions, t])
 
   const handleCopyMessage = (payload: string) => {
     navigator.clipboard.writeText(payload)
-    message.success('已复制到剪贴板')
+    message.success(t('common.copied'))
   }
 
   const handleViewDetail = (msg: NatsMessage) => {
@@ -168,13 +170,13 @@ const SubscriptionPanel: React.FC = () => {
   return (
     <div className="subscription-panel">
       <Card 
-        title="订阅管理" 
+        title={t('subscribe.title')} 
         className="panel-card subscription-card"
         size="small"
         extra={
           <Space>
             <Input
-              placeholder="搜索消息..."
+              placeholder={t('subscribe.search')}
               prefix={<SearchOutlined />}
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
@@ -186,7 +188,7 @@ const SubscriptionPanel: React.FC = () => {
       >
         <Space.Compact style={{ width: '100%', marginBottom: 12 }}>
           <Input 
-            placeholder="输入 Subject (支持通配符 * 和 >)" 
+            placeholder={t('subscribe.subjectPlaceholder', '输入 Subject (支持通配符 * 和 >)')} 
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             onPressEnter={handleSubscribe}
@@ -197,7 +199,7 @@ const SubscriptionPanel: React.FC = () => {
             onClick={handleSubscribe}
             disabled={!isConnected}
           >
-            订阅
+            {t('subscribe.subscribe')}
           </Button>
         </Space.Compact>
 
@@ -208,7 +210,7 @@ const SubscriptionPanel: React.FC = () => {
               onChange={setActiveSubscriptionId}
               options={subscriptionOptions}
               style={{ width: '100%' }}
-              placeholder="选择订阅主题"
+              placeholder={t('subscribe.selectSubscription', '选择订阅主题')}
               suffixIcon={null}
               className="subscription-select"
             />
@@ -224,9 +226,9 @@ const SubscriptionPanel: React.FC = () => {
             <Space>
               <Text strong>{activeSubscription.subject}</Text>
               <Tag color={isPaused ? 'orange' : 'green'}>
-                {isPaused ? '已暂停' : '接收中'}
+                {isPaused ? t('subscribe.paused', '已暂停') : t('subscribe.receiving', '接收中')}
               </Tag>
-              <Tag>{activeSubscription.messageCount} 条消息</Tag>
+              <Tag>{activeSubscription.messageCount} {t('subscribe.messagesCount', '条消息')}</Tag>
             </Space>
           }
           extra={
@@ -241,10 +243,10 @@ const SubscriptionPanel: React.FC = () => {
                     }
                   }}
                 >
-                  跳转最新
+                  {t('subscribe.scrollToLatest', '跳转最新')}
                 </Button>
               )}
-              <Tooltip title={isPaused ? '继续接收' : '暂停接收'}>
+              <Tooltip title={isPaused ? t('subscribe.resume') : t('subscribe.pause')}>
                 <Button 
                   type="text"
                   icon={isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}
@@ -252,16 +254,16 @@ const SubscriptionPanel: React.FC = () => {
                 />
               </Tooltip>
               <Popconfirm
-                title="确定清空所有消息？"
+                title={t('subscribe.confirmClear', '确定清空所有消息？')}
                 onConfirm={() => clearMessages(activeSubscriptionId!)}
-                okText="确定"
-                cancelText="取消"
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
               >
-                <Tooltip title="清空消息">
+                <Tooltip title={t('subscribe.clear')}>
                   <Button type="text" icon={<ClearOutlined />} />
                 </Tooltip>
               </Popconfirm>
-              <Tooltip title="取消订阅">
+              <Tooltip title={t('subscribe.unsubscribe')}>
                 <Button 
                   type="text" 
                   danger
@@ -279,7 +281,7 @@ const SubscriptionPanel: React.FC = () => {
           >
             {activeMessages.length === 0 ? (
               <Empty 
-                description="暂无消息" 
+                description={t('subscribe.noMessages')} 
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 style={{ marginTop: 40 }}
               />
@@ -303,7 +305,7 @@ const SubscriptionPanel: React.FC = () => {
                           </Space>
                           <Space size={0}>
                             {truncated && (
-                              <Tooltip title="查看详情">
+                              <Tooltip title={t('subscribe.viewDetail')}>
                                 <Button 
                                   type="text" 
                                   size="small"
@@ -312,7 +314,7 @@ const SubscriptionPanel: React.FC = () => {
                                 />
                               </Tooltip>
                             )}
-                            <Tooltip title="复制">
+                            <Tooltip title={t('subscribe.copy')}>
                               <Button 
                                 type="text" 
                                 size="small"
@@ -331,7 +333,7 @@ const SubscriptionPanel: React.FC = () => {
                             padding: '8px 12px',
                             fontSize: 12,
                             fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
-                            background: '#1a1a2e',
+                            background: 'var(--color-bg-container)',
                             borderRadius: 4
                           }}
                         >
@@ -350,7 +352,7 @@ const SubscriptionPanel: React.FC = () => {
       {subscriptions.length === 0 && (
         <Card className="panel-card" size="small">
           <Empty 
-            description="暂无订阅，请添加订阅主题" 
+            description={t('subscribe.noSubscriptions')} 
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             style={{ padding: 40 }}
           />
@@ -358,7 +360,7 @@ const SubscriptionPanel: React.FC = () => {
       )}
 
       <Modal
-        title="消息详情"
+        title={t('subscribe.messageDetail', '消息详情')}
         open={detailModalVisible}
         onCancel={() => {
           setDetailModalVisible(false)
@@ -370,13 +372,13 @@ const SubscriptionPanel: React.FC = () => {
               handleCopyMessage(detailMessage.payload)
             }
           }}>
-            复制内容
+            {t('subscribe.copyContent', '复制内容')}
           </Button>,
           <Button key="close" onClick={() => {
             setDetailModalVisible(false)
             setDetailMessage(null)
           }}>
-            关闭
+            {t('common.close')}
           </Button>
         ]}
         width={700}
@@ -385,7 +387,7 @@ const SubscriptionPanel: React.FC = () => {
           <div className="message-detail">
             <div className="message-detail-meta">
               <Space wrap>
-                <Text type="secondary">时间: {formatTimestamp(detailMessage.timestamp)}</Text>
+                <Text type="secondary">{t('subscribe.timestamp', '时间')}: {formatTimestamp(detailMessage.timestamp)}</Text>
                 <Tag color="blue">{detailMessage.subject}</Tag>
                 {detailMessage.replyTo && (
                   <Tag color="purple">Reply: {detailMessage.replyTo}</Tag>

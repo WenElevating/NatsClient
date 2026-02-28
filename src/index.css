@@ -6,6 +6,11 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --color-titlebar-text: #e0e0e0;
+  --color-titlebar-text-secondary: #a0a0a0;
+  --color-titlebar-btn: #a0a0a0;
+  --color-titlebar-btn-hover: rgba(255, 255, 255, 0.1);
+  --color-titlebar-btn-hover-text: #ffffff;
 }
 
 body {
@@ -24,4 +29,9 @@ body {
   color-scheme: light;
   color: #333333;
   background-color: #f0f2f5;
+  --color-titlebar-text: #1a202c;
+  --color-titlebar-text-secondary: #4a5568;
+  --color-titlebar-btn: #4a5568;
+  --color-titlebar-btn-hover: rgba(24, 144, 255, 0.1);
+  --color-titlebar-btn-hover-text: #1890ff;
 }
