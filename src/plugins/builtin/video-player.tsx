@@ -140,6 +140,14 @@ class VideoDecoderManager {
         hardwareAcceleration: 'prefer-hardware'
       })
 
+      const emptyChunk = new EncodedVideoChunk({
+        type: 'key',
+        timestamp: performance.now() * 1000,
+        data: new Uint8Array(0)
+      })
+      
+      this.decoder.decode(emptyChunk)
+      
       return true
     } catch (e) {
       console.error('initWebCodecs error:', e)
