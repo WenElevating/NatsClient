@@ -1,12 +1,18 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { setupIpcHandlers, cleanupIpcHandlers } from './ipc/index'
 import { setupStorageIpcHandlers } from './ipc/storage'
 import { windowStateManager } from './store/WindowStateManager'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const APP_ROOT = path.join(__dirname, '..')
+
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+const MAIN_DIST = path.join(APP_ROOT, 'dist-electron')
+const RENDERER_DIST = path.join(APP_ROOT, 'dist')
+
+const VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null = null
 
@@ -20,7 +26,7 @@ function createWindow() {
     height: windowState.height,
     minWidth: 1000,
     minHeight: 700,
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    icon: path.join(VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,
