@@ -675,12 +675,13 @@ export class NatsService extends EventEmitter {
   }
 
   async deleteKvBucket(bucketName: string): Promise<void> {
-    if (!this.jsManager) {
-      throw new Error('JetStream not available')
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
     }
 
     try {
-      await this.jsManager.streams.delete(`KV_${bucketName}`)
+      const js = this.nc.jetstream()
+      await js.views.kv.delete(bucketName)
     } catch (error) {
       throw new Error(`Failed to delete KV bucket: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
