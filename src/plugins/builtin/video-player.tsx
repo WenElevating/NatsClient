@@ -20,15 +20,11 @@ interface VideoStreamConfig {
   codec: VideoCodec
   autoPlay: boolean
   lowLatency: boolean
-  bufferSize: number
 }
 
 interface VideoDecoderConfig {
   codec: VideoCodec
   format: string
-  width?: number
-  height?: number
-  framerate?: number
 }
 
 const CODEC_OPTIONS = [
@@ -38,17 +34,16 @@ const CODEC_OPTIONS = [
   { value: 'av1', label: 'AV1' }
 ]
 
-const CODEC_SUPPORT: Record<VideoCodec, string[]> = {
-  h264: ['avc1.42001E', 'avc1.4D001E', 'avc1.64001E'],
-  h265: ['hev1.1.6.L93.B0', 'hev1.2.4.L93.B0'],
-  vp8: ['vp8'],
-  vp9: ['vp09.00.10.08', 'vp09.01.10.08'],
-  av1: ['av01.0.01M.08', 'av01.0.04M.08']
+const CODEC_MIME: Record<VideoCodec, string> = {
+  h264: 'video/mp4; codecs="avc1.42E01E"',
+  h265: 'video/mp4; codecs="hev1.6.L120.90"',
+  vp9: 'video/webm; codecs="vp09.00.10.08"',
+  av1: 'video/mp4; codecs="av01.0.01M.08"'
 }
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
 
-class VideoDecoderManager {
+class SimpleVideoDecoder {
   private decoder: VideoDecoder | null = null
   private canvas: HTMLCanvasElement | null = null
   private ctx: CanvasRenderingContext2D | null = null
@@ -59,8 +54,8 @@ class VideoDecoderManager {
   private onStatsUpdate?: (stats: { fps: number; frameCount: number; latency: number }) => void
   private onStatusChange?: (status: DecoderStatus) => void
   private status: DecoderStatus = 'idle'
-  private spsPps: Uint8Array | null = null
-  private configured = false
+  private frameBuffer: VideoFrame[] = []
+  private targetFps = 30
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -99,8 +94,13 @@ class VideoDecoderManager {
     this.setStatus('initializing')
 
     if ('VideoDecoder' in window) {
-      this.setStatus('ready')
-      return true
+      const success = await this.initWebCodecs()
+      if (success) {
+        this.setStatus('ready')
+      } else {
+        this.setStatus('error')
+      }
+      return success
     }
 
     console.warn('WebCodecs not supported')
@@ -108,19 +108,14 @@ class VideoDecoderManager {
     return false
   }
 
-  private async ensureDecoderConfigured(sps: Uint8Array, pps: Uint8Array): Promise<boolean> {
-    if (this.configured && this.decoder) return true
-    
-    const codecString = CODEC_SUPPORT[this.config.codec]?.[0]
+  private async initWebCodecs(): Promise<boolean> {
+    const codecString = CODEC_MIME[this.config.codec]
     if (!codecString) return false
-
+    
     try {
-      const description = this.createAVCDescription(sps, pps)
-      
       const support = await VideoDecoder.isConfigSupported({
         codec: codecString,
-        optimizeForLatency: true,
-        description
+        optimizeForLatency: true
       })
 
       if (!support.supported) {
@@ -132,49 +127,21 @@ class VideoDecoderManager {
         output: (frame) => this.handleFrame(frame),
         error: (e) => {
           console.error('VideoDecoder error:', e)
+          this.setStatus('error')
         }
       })
 
       this.decoder.configure({
         codec: codecString,
         optimizeForLatency: true,
-        hardwareAcceleration: 'prefer-hardware',
-        description
+        hardwareAcceleration: 'prefer-hardware'
       })
 
-      this.configured = true
       return true
     } catch (e) {
-      console.error('ensureDecoderConfigured error:', e)
+      console.error('initWebCodecs error:', e)
       return false
     }
-  }
-
-  private createAVCDescription(sps: Uint8Array, pps: Uint8Array): ArrayBuffer {
-    const spsLen = sps.length
-    const ppsLen = pps.length
-    const description = new ArrayBuffer(7 + spsLen + ppsLen)
-    const view = new DataView(description)
-    
-    let offset = 0
-    view.setUint8(offset++, 0x01)
-    view.setUint8(offset++, 0x64)
-    view.setUint8(offset++, 0x00)
-    view.setUint8(offset++, 0x1F)
-    view.setUint8(offset++, 0xFF)
-    
-    view.setUint8(offset++, 0xE1)
-    view.setUint16(offset, spsLen, false)
-    offset += 2
-    new Uint8Array(description, offset, spsLen).set(sps)
-    offset += spsLen
-    
-    view.setUint8(offset++, 0x01)
-    view.setUint16(offset, ppsLen, false)
-    offset += 2
-    new Uint8Array(description, offset, ppsLen).set(pps)
-    
-    return description
   }
 
   private handleFrame(frame: VideoFrame): void {
@@ -183,6 +150,8 @@ class VideoDecoderManager {
       return
     }
 
+    this.frameBuffer.push(frame)
+    
     const canvas = this.canvas
     const width = frame.displayWidth
     const height = frame.displayHeight
@@ -192,8 +161,6 @@ class VideoDecoderManager {
       canvas.height = height
     }
 
-    this.ctx.drawImage(frame, 0, 0, width, height)
-    
     this.frameCount++
     this.lastFrameTime = performance.now()
     
@@ -209,95 +176,29 @@ class VideoDecoderManager {
   }
 
   async decode(data: ArrayBuffer | Uint8Array): Promise<{ success: boolean; error?: string }> {
+    if (!this.decoder) {
+      return { success: false, error: '解码器未初始化' }
+    }
+    
     if (this.destroyed) {
       return { success: false, error: '解码器已销毁' }
     }
 
-    const chunk = new Uint8Array(data)
-    
-    const nalUnits = this.extractNALUnits(chunk)
-    
-    for (const nal of nalUnits) {
-      const nalType = nal[0] & 0x1F
+    try {
+      const chunk = new Uint8Array(data)
       
-      if (nalType === 7) {
-        this.spsPps = nal
-      } else if (nalType === 8 && this.spsPps) {
-        const sps = this.spsPps
-        const pps = nal
-        
-        if (!this.configured) {
-          const success = await this.ensureDecoderConfigured(sps, pps)
-          if (!success) {
-            return { success: false, error: '解码器配置失败' }
-          }
-        }
-      } else if (nalType === 5 && this.configured && this.decoder) {
-        const isKeyFrame = true
-        const encodedChunk = new EncodedVideoChunk({
-          type: isKeyFrame ? 'key' : 'delta',
-          timestamp: performance.now() * 1000,
-          data: chunk
-        })
-        
-        try {
-          this.decoder.decode(encodedChunk)
-          return { success: true }
-        } catch (e) {
-          return { success: false, error: e instanceof Error ? e.message : String(e) }
-        }
-      }
-    }
-    
-    if (this.configured && this.decoder) {
-      const isKeyFrame = this.checkForKeyFrame(chunk)
       const encodedChunk = new EncodedVideoChunk({
-        type: isKeyFrame ? 'key' : 'delta',
+        type: 'key',
         timestamp: performance.now() * 1000,
         data: chunk
       })
-      
-      try {
-        this.decoder.decode(encodedChunk)
-        return { success: true }
-      } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
-      }
-    }
-    
-    return { success: false, error: '等待关键帧...' }
-  }
 
-  private extractNALUnits(data: Uint8Array): Uint8Array[] {
-    const nals: Uint8Array[] = []
-    let start = -1
-    
-    for (let i = 0; i < data.length - 3; i++) {
-      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
-        if (start >= 0) {
-          nals.push(data.slice(start + 4, i))
-        }
-        start = i
-      }
+      this.decoder.decode(encodedChunk)
+      return { success: true }
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e)
+      return { success: false, error: errorMsg }
     }
-    
-    if (start >= 0) {
-      nals.push(data.slice(start + 4))
-    }
-    
-    return nals
-  }
-
-  private checkForKeyFrame(data: Uint8Array): boolean {
-    for (let i = 0; i < data.length - 4; i++) {
-      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
-        const nalType = data[i + 4] & 0x1F
-        if (nalType === 5 || nalType === 7 || nalType === 8) {
-          return true
-        }
-      }
-    }
-    return false
   }
 
   getStats(): { fps: number; frameCount: number; latency: number } {
@@ -314,8 +215,7 @@ class VideoDecoderManager {
     if (this.decoder) {
       this.decoder.reset()
       this.frameCount = 0
-      this.configured = false
-      this.spsPps = null
+      this.frameBuffer = []
       this.setStatus('ready')
     }
   }
@@ -328,15 +228,14 @@ class VideoDecoderManager {
     }
     this.ctx = null
     this.canvas = null
-    this.configured = false
-    this.spsPps = null
+    this.frameBuffer = []
     this.setStatus('idle')
   }
 }
 
 const VideoPlayer: React.FC<MessageRendererProps> = ({ message, isPreview }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const decoderRef = useRef<VideoDecoderManager | null>(null)
+  const decoderRef = useRef<SimpleVideoDecoder | null>(null)
   
   const [stats, setStats] = useState({ fps: 0, frameCount: 0, latency: 0 })
   const [error, setError] = useState<string | null>(null)
@@ -344,7 +243,7 @@ const VideoPlayer: React.FC<MessageRendererProps> = ({ message, isPreview }) => 
   useEffect(() => {
     if (!canvasRef.current) return
 
-    const decoder = new VideoDecoderManager({
+    const decoder = new SimpleVideoDecoder({
       codec: 'h264',
       format: 'annexb'
     })
@@ -418,9 +317,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [newCodec, setNewCodec] = useState<VideoCodec>('h264')
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const decoderRef = useRef<VideoDecoderManager | null>(null)
-  const subscriptionIdRef = useRef<string | null>(null)
-  
+  const decoderRef = useRef<SimpleVideoDecoder | null>(null)
+  const subscriptionIdRef = useRef<string | null>(null)  
   const [stats, setStats] = useState({ fps: 0, frameCount: 0, latency: 0 })
   const [decoderStatus, setDecoderStatus] = useState<DecoderStatus>('idle')
   const [subscriptionStatus, setSubscriptionStatus] = useState<'none' | 'subscribing' | 'subscribed' | 'error'>('none')
@@ -446,8 +344,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       subject: newSubject.trim(),
       codec: newCodec,
       autoPlay: true,
-      lowLatency: true,
-      bufferSize: 5
+      lowLatency: true
     }
     
     setStreams(prev => [...prev, newStream])
@@ -503,7 +400,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       return
     }
     
-    const decoder = new VideoDecoderManager({
+    const decoder = new SimpleVideoDecoder({
       codec,
       format: 'annexb'
     })
@@ -512,31 +409,19 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     decoder.setStatusCallback(setDecoderStatus)
     
     const success = await decoder.init(canvasRef.current)
-    if (!success) {
+    if (success) {
+      decoderRef.current = decoder
+      setSubscriptionStatus('subscribed')
+      message.success(`已订阅 ${subject}`)
+    } else {
+      setSubscriptionStatus('error')
       message.error('解码器初始化失败')
-      setSubscriptionStatus('error')
-      return
-    }
-    
-    decoderRef.current = decoder
-
-    try {
-      const result = await window.nats.subscribe(subject)
-      if (result.success && result.subscriptionId) {
-        subscriptionIdRef.current = result.subscriptionId
-        setSubscriptionStatus('subscribed')
-        message.success(`已订阅 ${subject}`)
-      } else {
-        setSubscriptionStatus('error')
-        message.error(`订阅失败: ${result.error}`)
-      }
-    } catch (e) {
-      setSubscriptionStatus('error')
-      message.error(`订阅异常: ${e}`)
     }
   }, [webCodecsSupported, stopStream])
 
   useEffect(() => {
+    if (!subscriptionIdRef.current) return
+
     const handleMessage = (data: { subscriptionId: string; message: { payload: string; subject: string } }) => {
       if (data.subscriptionId !== subscriptionIdRef.current) return
       if (!decoderRef.current) return
@@ -781,8 +666,8 @@ const VideoRenderer: React.FC<MessageRendererProps> = (props) => {
 const videoPlayerPlugin: NatsClientPlugin = {
   id: 'com.natsclient.video-player',
   name: 'Video Player',
-  version: '1.0.0',
-  description: '高性能视频流播放器，支持 H.264/H.265/VP9/AV1 硬件解码',
+  version: '2.0.0',
+  description: '高性能视频流播放器，使用 WebCodecs API 硬件解码',
   author: 'NatsClient Team',
   
   capabilities: {
