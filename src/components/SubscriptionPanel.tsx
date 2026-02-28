@@ -169,7 +169,7 @@ interface MessageCountProps {
 
 const MessageCount = memo(({ subscriptionId }: MessageCountProps) => {
   const count = useSubscriptionStore(
-    useShallow(state => state.messageCounters.get(subscriptionId) || 0)
+    useShallow(state => state.messageCounters[subscriptionId] || 0)
   )
   return <Tag style={{ marginLeft: 8, flexShrink: 0 }}>{count}</Tag>
 })
@@ -180,7 +180,7 @@ interface ActiveMessageCountProps {
 
 const ActiveMessageCount = memo(({ subscriptionId }: ActiveMessageCountProps) => {
   const count = useSubscriptionStore(
-    useShallow(state => state.messageCounters.get(subscriptionId) || 0)
+    useShallow(state => state.messageCounters[subscriptionId] || 0)
   )
   return <Tag>{count}</Tag>
 })

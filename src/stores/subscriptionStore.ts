@@ -5,7 +5,7 @@ import { useSettingsStore } from './settingsStore'
 interface SubscriptionStore {
   subscriptions: Subscription[]
   messages: Map<string, NatsMessage[]>
-  messageCounters: Map<string, number>
+  messageCounters: Record<string, number>
   pausedSubscriptions: Set<string>
   searchFilter: string
   savedSubjects: string[]
@@ -21,10 +21,53 @@ interface SubscriptionStore {
   removeSavedSubject: (subject: string) => void
 }
 
+const pendingMessages: Map<string, NatsMessage[]> = new Map()
+const pendingCounters: Map<string, number> = new Map()
+let flushTimeout: ReturnType<typeof setTimeout> | null = null
+
+const flushPendingUpdates = () => {
+  if (pendingMessages.size === 0 && pendingCounters.size === 0) return
+  
+  useSubscriptionStore.setState((state) => {
+    const newMessages = new Map(state.messages)
+    const newCounters = { ...state.messageCounters }
+    
+    pendingMessages.forEach((msgs, id) => {
+      const existing = newMessages.get(id) || []
+      const maxMessages = useSettingsStore.getState().maxMessagesPerSubscription
+      const updated = [...existing, ...msgs]
+      if (updated.length > maxMessages) {
+        updated.splice(0, updated.length - maxMessages)
+      }
+      newMessages.set(id, updated)
+    })
+    
+    pendingCounters.forEach((count, id) => {
+      newCounters[id] = (newCounters[id] || 0) + count
+    })
+    
+    pendingMessages.clear()
+    pendingCounters.clear()
+    
+    return { 
+      messages: newMessages,
+      messageCounters: newCounters
+    }
+  })
+}
+
+const scheduleFlush = () => {
+  if (flushTimeout) return
+  flushTimeout = setTimeout(() => {
+    flushTimeout = null
+    flushPendingUpdates()
+  }, 100)
+}
+
 export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   subscriptions: [],
   messages: new Map(),
-  messageCounters: new Map(),
+  messageCounters: {},
   pausedSubscriptions: new Set(),
   searchFilter: '',
   savedSubjects: [],
@@ -36,12 +79,10 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
       }
       const newMessages = new Map(state.messages)
       newMessages.set(subscription.id, [])
-      const newCounters = new Map(state.messageCounters)
-      newCounters.set(subscription.id, 0)
       return {
         subscriptions: [...state.subscriptions, subscription],
         messages: newMessages,
-        messageCounters: newCounters
+        messageCounters: { ...state.messageCounters, [subscription.id]: 0 }
       }
     })
   },
@@ -50,10 +91,9 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.delete(id)
-      const newCounters = new Map(state.messageCounters)
-      newCounters.delete(id)
       const newPaused = new Set(state.pausedSubscriptions)
       newPaused.delete(id)
+      const { [id]: _, ...newCounters } = state.messageCounters
       return {
         subscriptions: state.subscriptions.filter(s => s.id !== id),
         messages: newMessages,
@@ -72,40 +112,26 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   },
 
   addMessage: (subscriptionId, message) => {
-    const { pausedSubscriptions, messageCounters } = get()
+    const { pausedSubscriptions } = get()
     if (pausedSubscriptions.has(subscriptionId)) return
 
-    const counter = (messageCounters.get(subscriptionId) || 0) + 1
-
-    set((state) => {
-      const maxMessages = useSettingsStore.getState().maxMessagesPerSubscription
-      const newMessages = new Map(state.messages)
-      const existing = newMessages.get(subscriptionId) || []
-      const updated = [...existing, message]
-      if (updated.length > maxMessages) {
-        updated.splice(0, updated.length - maxMessages)
-      }
-      newMessages.set(subscriptionId, updated)
-      
-      const newCounters = new Map(state.messageCounters)
-      newCounters.set(subscriptionId, counter)
-      
-      return { 
-        messages: newMessages,
-        messageCounters: newCounters
-      }
-    })
+    const pending = pendingMessages.get(subscriptionId) || []
+    pending.push(message)
+    pendingMessages.set(subscriptionId, pending)
+    
+    pendingCounters.set(subscriptionId, (pendingCounters.get(subscriptionId) || 0) + 1)
+    
+    scheduleFlush()
   },
 
   clearMessages: (subscriptionId) => {
+    flushPendingUpdates()
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.set(subscriptionId, [])
-      const newCounters = new Map(state.messageCounters)
-      newCounters.set(subscriptionId, 0)
       return { 
         messages: newMessages,
-        messageCounters: newCounters
+        messageCounters: { ...state.messageCounters, [subscriptionId]: 0 }
       }
     })
   },
