@@ -5,7 +5,6 @@ import { useSettingsStore } from './settingsStore'
 interface SubscriptionStore {
   subscriptions: Subscription[]
   messages: Map<string, NatsMessage[]>
-  messageVersion: number
   pausedSubscriptions: Set<string>
   searchFilter: string
   savedSubjects: string[]
@@ -17,10 +16,8 @@ interface SubscriptionStore {
   clearMessages: (subscriptionId: string) => void
   togglePause: (subscriptionId: string) => void
   setSearchFilter: (filter: string) => void
-  getFilteredMessages: (subscriptionId: string) => NatsMessage[]
   saveSubject: (subject: string) => void
   removeSavedSubject: (subject: string) => void
-  getSavedSubjects: () => string[]
 }
 
 const messageCounters = new Map<string, number>()
@@ -28,7 +25,6 @@ const messageCounters = new Map<string, number>()
 export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   subscriptions: [],
   messages: new Map(),
-  messageVersion: 0,
   pausedSubscriptions: new Set(),
   searchFilter: '',
   savedSubjects: [],
@@ -39,9 +35,11 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
         return state
       }
       messageCounters.set(subscription.id, 0)
+      const newMessages = new Map(state.messages)
+      newMessages.set(subscription.id, [])
       return {
         subscriptions: [...state.subscriptions, subscription],
-        messages: new Map(state.messages).set(subscription.id, [])
+        messages: newMessages
       }
     })
   },
@@ -73,8 +71,8 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     const { pausedSubscriptions } = get()
     if (pausedSubscriptions.has(subscriptionId)) return
 
-    const counter = messageCounters.get(subscriptionId) || 0
-    messageCounters.set(subscriptionId, counter + 1)
+    const counter = (messageCounters.get(subscriptionId) || 0) + 1
+    messageCounters.set(subscriptionId, counter)
 
     set((state) => {
       const maxMessages = useSettingsStore.getState().maxMessagesPerSubscription
@@ -85,9 +83,14 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
         updated.splice(0, updated.length - maxMessages)
       }
       newMessages.set(subscriptionId, updated)
+      
+      const newSubscriptions = state.subscriptions.map(s => 
+        s.id === subscriptionId ? { ...s, messageCount: counter } : s
+      )
+      
       return { 
         messages: newMessages,
-        messageVersion: state.messageVersion + 1
+        subscriptions: newSubscriptions
       }
     })
   },
@@ -97,10 +100,7 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     set((state) => {
       const newMessages = new Map(state.messages)
       newMessages.set(subscriptionId, [])
-      return { 
-        messages: newMessages,
-        messageVersion: state.messageVersion + 1
-      }
+      return { messages: newMessages }
     })
   },
 
@@ -120,17 +120,6 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     set({ searchFilter: filter })
   },
 
-  getFilteredMessages: (subscriptionId) => {
-    const { messages, searchFilter } = get()
-    const msgs = messages.get(subscriptionId) || []
-    if (!searchFilter) return msgs
-    const lowerFilter = searchFilter.toLowerCase()
-    return msgs.filter(m => 
-      m.subject.toLowerCase().includes(lowerFilter) ||
-      m.payload.toLowerCase().includes(lowerFilter)
-    )
-  },
-
   saveSubject: (subject) => {
     set((state) => {
       if (state.savedSubjects.includes(subject)) return state
@@ -142,17 +131,9 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     set((state) => ({
       savedSubjects: state.savedSubjects.filter(s => s !== subject)
     }))
-  },
-
-  getSavedSubjects: () => get().savedSubjects
+  }
 }))
 
 window.nats.onMessage((data) => {
-  const store = useSubscriptionStore.getState()
-  store.addMessage(data.subscriptionId, data.message)
-  
-  const counter = messageCounters.get(data.subscriptionId) || 0
-  store.updateSubscription(data.subscriptionId, {
-    messageCount: counter
-  })
+  useSubscriptionStore.getState().addMessage(data.subscriptionId, data.message)
 })

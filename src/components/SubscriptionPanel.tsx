@@ -11,7 +11,6 @@ import {
   EyeOutlined
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { useShallow } from 'zustand/react/shallow'
 import { useConnectionStore, useSubscriptionStore, useSettingsStore } from '../stores'
 import type { Subscription, NatsMessage } from '../types/nats'
 import { formatTimestamp, formatJson } from '../utils/format'
@@ -111,7 +110,7 @@ const MessageList = memo(({
   const listRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(0)
   
-  const messages = useSubscriptionStore(useShallow(state => {
+  const messages = useSubscriptionStore(state => {
     const msgs = state.messages.get(subscriptionId) || []
     if (!searchFilter) return msgs.slice(-VISIBLE_COUNT)
     const lowerFilter = searchFilter.toLowerCase()
@@ -119,7 +118,7 @@ const MessageList = memo(({
       m.subject.toLowerCase().includes(lowerFilter) ||
       m.payload.toLowerCase().includes(lowerFilter)
     ).slice(-VISIBLE_COUNT)
-  }))
+  })
 
   useEffect(() => {
     if (autoScroll && listRef.current && messages.length > 0 && messages.length !== prevCountRef.current) {
@@ -165,19 +164,20 @@ const SubscriptionPanel: React.FC = () => {
   const { t } = useTranslation()
   const [subject, setSubject] = useState('')
   const { connectionState } = useConnectionStore()
-  const { 
-    subscriptions, 
-    pausedSubscriptions, 
-    searchFilter,
-    addSubscription, 
-    removeSubscription, 
-    togglePause, 
-    clearMessages, 
-    setSearchFilter,
-    savedSubjects,
-    saveSubject,
-    removeSavedSubject
-  } = useSubscriptionStore()
+  
+  const subscriptions = useSubscriptionStore(state => state.subscriptions)
+  const pausedSubscriptions = useSubscriptionStore(state => state.pausedSubscriptions)
+  const searchFilter = useSubscriptionStore(state => state.searchFilter)
+  const savedSubjects = useSubscriptionStore(state => state.savedSubjects)
+  
+  const addSubscription = useSubscriptionStore(state => state.addSubscription)
+  const removeSubscription = useSubscriptionStore(state => state.removeSubscription)
+  const togglePause = useSubscriptionStore(state => state.togglePause)
+  const clearMessages = useSubscriptionStore(state => state.clearMessages)
+  const setSearchFilter = useSubscriptionStore(state => state.setSearchFilter)
+  const saveSubject = useSubscriptionStore(state => state.saveSubject)
+  const removeSavedSubject = useSubscriptionStore(state => state.removeSavedSubject)
+  
   const { messageDisplayLength } = useSettingsStore()
 
   const [activeSubscriptionId, setActiveSubscriptionId] = useState<string | null>(null)
