@@ -109,3 +109,26 @@ export interface AppSettings {
   maxLogs: number
   messageDisplayLength: number
 }
+
+export interface KvBucketInfo {
+  bucket: string
+  description?: string
+  values: number
+  history: number
+  ttl: number
+  backingStore: string
+}
+
+export interface KvEntry {
+  key: string
+  value: string
+  revision: number
+  created: Date
+  delta?: number
+  operation?: 'PUT' | 'DEL' | 'PURGE'
+}
+
+export interface KvWatchOptions {
+  bucket: string
+  key?: string
+}

@@ -4,7 +4,8 @@ import {
   SendOutlined, 
   EyeOutlined, 
   MessageOutlined, 
-  DatabaseOutlined 
+  DatabaseOutlined,
+  KeyOutlined
 } from '@ant-design/icons'
 import { 
   ConnectionList, 
@@ -13,7 +14,8 @@ import {
   RequestPanel, 
   JetStreamPanel, 
   LogPanel,
-  TitleBar
+  TitleBar,
+  KvStorePanel
 } from '../components'
 import { useConnectionStore, useSettingsStore, useLogStore } from '../stores'
 import { darkTheme, lightTheme } from '../themes'
@@ -118,6 +120,16 @@ const MainLayout: React.FC = () => {
         </span>
       ),
       children: <JetStreamPanel />
+    },
+    {
+      key: 'kvstore',
+      label: (
+        <span className="tab-label">
+          <KeyOutlined />
+          <span>KV Store</span>
+        </span>
+      ),
+      children: <KvStorePanel />
     }
   ]
 

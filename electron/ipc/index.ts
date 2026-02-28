@@ -20,6 +20,14 @@ export const IPC_CHANNELS = {
   NATS_JS_FETCH_MESSAGE: 'nats:js:fetch-message',
   NATS_JS_ACK: 'nats:js:ack',
   NATS_JS_NAK: 'nats:js:nak',
+  NATS_KV_GET_BUCKETS: 'nats:kv:get-buckets',
+  NATS_KV_GET_KEYS: 'nats:kv:get-keys',
+  NATS_KV_GET_ENTRY: 'nats:kv:get-entry',
+  NATS_KV_PUT_ENTRY: 'nats:kv:put-entry',
+  NATS_KV_DELETE_ENTRY: 'nats:kv:delete-entry',
+  NATS_KV_GET_HISTORY: 'nats:kv:get-history',
+  NATS_KV_CREATE_BUCKET: 'nats:kv:create-bucket',
+  NATS_KV_DELETE_BUCKET: 'nats:kv:delete-bucket',
   NATS_MESSAGE: 'nats:message',
   NATS_CONNECTION_STATE: 'nats:connection-state',
   NATS_PUBLISH_SUCCESS: 'nats:publish-success',
@@ -185,6 +193,78 @@ export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.NATS_JS_NAK, async (_event, streamName: string, consumerName: string, sequence: number) => {
     try {
       await natsService.nakMessage(streamName, consumerName, sequence)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_GET_BUCKETS, async () => {
+    try {
+      const buckets = await natsService.getKvBuckets()
+      return { success: true, buckets }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_GET_KEYS, async (_event, bucketName: string) => {
+    try {
+      const keys = await natsService.getKvKeys(bucketName)
+      return { success: true, keys }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_GET_ENTRY, async (_event, bucketName: string, key: string) => {
+    try {
+      const entry = await natsService.getKvEntry(bucketName, key)
+      return { success: true, entry }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_PUT_ENTRY, async (_event, bucketName: string, key: string, value: string) => {
+    try {
+      const revision = await natsService.putKvEntry(bucketName, key, value)
+      return { success: true, revision }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_DELETE_ENTRY, async (_event, bucketName: string, key: string) => {
+    try {
+      await natsService.deleteKvEntry(bucketName, key)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_GET_HISTORY, async (_event, bucketName: string, key: string) => {
+    try {
+      const history = await natsService.getKvHistory(bucketName, key)
+      return { success: true, history }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_CREATE_BUCKET, async (_event, bucketName: string, options?: { description?: string; ttl?: number; history?: number }) => {
+    try {
+      await natsService.createKvBucket(bucketName, options)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NATS_KV_DELETE_BUCKET, async (_event, bucketName: string) => {
+    try {
+      await natsService.deleteKvBucket(bucketName)
       return { success: true }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }

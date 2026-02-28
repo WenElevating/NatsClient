@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events'
 import * as nats from 'nats'
 import type { NatsConnection, Subscription as NatsSubscription, JetStreamManager } from 'nats'
-import type { ConnectionConfig, ConnectionState, NatsMessage, Subscription, PublishOptions, RequestOptions, RequestResult, JetStreamInfo, ConsumerInfo, StoredMessage } from '../../src/types/nats'
+import type { ConnectionConfig, ConnectionState, NatsMessage, Subscription, PublishOptions, RequestOptions, RequestResult, JetStreamInfo, ConsumerInfo, StoredMessage, KvBucketInfo, KvEntry } from '../../src/types/nats'
 import { v4 as uuidv4 } from 'uuid'
 
 export class NatsService extends EventEmitter {
@@ -397,6 +397,172 @@ export class NatsService extends EventEmitter {
       }
     } catch (error) {
       throw new Error(`Failed to nak message: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async getKvBuckets(): Promise<KvBucketInfo[]> {
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
+    }
+
+    try {
+      const js = this.nc.jetstream()
+      const jsm = await this.nc.jetstreamManager()
+      const result: KvBucketInfo[] = []
+      
+      const streams = await jsm.streams.list()
+      for await (const stream of streams) {
+        if (stream.config.name.startsWith('KV_')) {
+          try {
+            const bucketName = stream.config.name.substring(3)
+            const kv = await js.views.kv(bucketName)
+            const status = await kv.status()
+            result.push({
+              bucket: status.bucket,
+              values: status.values,
+              history: status.history,
+              ttl: status.ttl,
+              backingStore: stream.config.storage === 'memory' ? 'memory' : 'file'
+            })
+          } catch {
+            continue
+          }
+        }
+      }
+
+      return result
+    } catch (error) {
+      throw new Error(`Failed to get KV buckets: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async getKvKeys(bucketName: string): Promise<string[]> {
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
+    }
+
+    try {
+      const js = this.nc.jetstream()
+      const kv = await js.views.kv(bucketName)
+      const keys: string[] = []
+      const iter = await kv.keys()
+      
+      for await (const key of iter) {
+        keys.push(key)
+      }
+      
+      return keys
+    } catch (error) {
+      throw new Error(`Failed to get KV keys: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async getKvEntry(bucketName: string, key: string): Promise<KvEntry | null> {
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
+    }
+
+    try {
+      const js = this.nc.jetstream()
+      const kv = await js.views.kv(bucketName)
+      const entry = await kv.get(key)
+      
+      if (entry) {
+        return {
+          key: entry.key,
+          value: this.decodePayload(entry.value),
+          revision: entry.revision,
+          created: new Date(entry.created.getTime())
+        }
+      }
+      
+      return null
+    } catch (error) {
+      throw new Error(`Failed to get KV entry: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async putKvEntry(bucketName: string, key: string, value: string): Promise<number> {
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
+    }
+
+    try {
+      const js = this.nc.jetstream()
+      const kv = await js.views.kv(bucketName)
+      return await kv.put(key, this.encodePayload(value))
+    } catch (error) {
+      throw new Error(`Failed to put KV entry: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async deleteKvEntry(bucketName: string, key: string): Promise<void> {
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
+    }
+
+    try {
+      const js = this.nc.jetstream()
+      const kv = await js.views.kv(bucketName)
+      await kv.delete(key)
+    } catch (error) {
+      throw new Error(`Failed to delete KV entry: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async getKvHistory(bucketName: string, key: string): Promise<KvEntry[]> {
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
+    }
+
+    try {
+      const js = this.nc.jetstream()
+      const kv = await js.views.kv(bucketName)
+      const history = await kv.history({ key })
+      const result: KvEntry[] = []
+
+      for await (const entry of history) {
+        result.push({
+          key: entry.key,
+          value: this.decodePayload(entry.value),
+          revision: entry.revision,
+          created: new Date(entry.created.getTime()),
+          operation: entry.operation as 'PUT' | 'DEL' | 'PURGE'
+        })
+      }
+
+      return result
+    } catch (error) {
+      throw new Error(`Failed to get KV history: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async createKvBucket(bucketName: string, options?: { description?: string; ttl?: number; history?: number }): Promise<void> {
+    if (!this.nc) {
+      throw new Error('Not connected to NATS server')
+    }
+
+    try {
+      const js = this.nc.jetstream()
+      await js.views.kv(bucketName, {
+        description: options?.description,
+        ttl: options?.ttl ? options.ttl * 1000000000 : undefined,
+        history: options?.history || 10
+      })
+    } catch (error) {
+      throw new Error(`Failed to create KV bucket: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  async deleteKvBucket(bucketName: string): Promise<void> {
+    if (!this.jsManager) {
+      throw new Error('JetStream not available')
+    }
+
+    try {
+      await this.jsManager.streams.delete(`KV_${bucketName}`)
+    } catch (error) {
+      throw new Error(`Failed to delete KV bucket: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
