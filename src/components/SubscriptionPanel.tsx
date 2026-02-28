@@ -163,6 +163,28 @@ const MessageList = memo(({
   )
 })
 
+interface MessageCountProps {
+  subscriptionId: string
+}
+
+const MessageCount = memo(({ subscriptionId }: MessageCountProps) => {
+  const count = useSubscriptionStore(
+    useShallow(state => state.messageCounters.get(subscriptionId) || 0)
+  )
+  return <Tag style={{ marginLeft: 8, flexShrink: 0 }}>{count}</Tag>
+})
+
+interface ActiveMessageCountProps {
+  subscriptionId: string
+}
+
+const ActiveMessageCount = memo(({ subscriptionId }: ActiveMessageCountProps) => {
+  const count = useSubscriptionStore(
+    useShallow(state => state.messageCounters.get(subscriptionId) || 0)
+  )
+  return <Tag>{count}</Tag>
+})
+
 const SubscriptionPanel: React.FC = () => {
   const { t } = useTranslation()
   const [subject, setSubject] = useState('')
@@ -173,7 +195,6 @@ const SubscriptionPanel: React.FC = () => {
     pausedSubscriptions, 
     searchFilter,
     savedSubjects,
-    messageCounters,
     addSubscription, 
     removeSubscription, 
     togglePause, 
@@ -187,7 +208,6 @@ const SubscriptionPanel: React.FC = () => {
       pausedSubscriptions: state.pausedSubscriptions,
       searchFilter: state.searchFilter,
       savedSubjects: state.savedSubjects,
-      messageCounters: state.messageCounters,
       addSubscription: state.addSubscription,
       removeSubscription: state.removeSubscription,
       togglePause: state.togglePause,
@@ -308,7 +328,6 @@ const SubscriptionPanel: React.FC = () => {
   
   const activeSubscription = subscriptions.find(s => s.id === activeSubscriptionId)
   const isPaused = activeSubscriptionId ? pausedSubscriptions.has(activeSubscriptionId) : false
-  const activeMessageCount = activeSubscriptionId ? (messageCounters.get(activeSubscriptionId) || 0) : 0
 
   const subscriptionOptions = subscriptions.map(sub => ({
     value: sub.id,
@@ -317,7 +336,7 @@ const SubscriptionPanel: React.FC = () => {
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {sub.subject}
         </span>
-        <Tag style={{ marginLeft: 8, flexShrink: 0 }}>{messageCounters.get(sub.id) || 0}</Tag>
+        <MessageCount subscriptionId={sub.id} />
       </div>
     )
   }))
@@ -383,7 +402,8 @@ const SubscriptionPanel: React.FC = () => {
               <Tag color={isPaused ? 'orange' : 'green'}>
                 {isPaused ? t('subscribe.paused', '已暂停') : t('subscribe.receiving', '接收中')}
               </Tag>
-              <Tag>{activeMessageCount} {t('subscribe.messagesCount', '条消息')}</Tag>
+              <ActiveMessageCount subscriptionId={activeSubscriptionId!} />
+              <span>{t('subscribe.messagesCount', '条消息')}</span>
             </Space>
           }
           extra={
