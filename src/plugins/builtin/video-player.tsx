@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
-import { Button, Space, Typography, Tag, Input, Form, Card, message, Modal, Tooltip, Alert, Switch } from 'antd'
+import { Button, Space, Typography, Tag, Input, Form, Card, message, Modal, Tooltip, Alert, Switch, Select } from 'antd'
 import { 
   PlayCircleOutlined, 
   ReloadOutlined,
@@ -13,9 +13,20 @@ import type { NatsClientPlugin, PluginPanelProps } from '../types'
 
 const { Text } = Typography
 
+const RESOLUTION_PRESETS = [
+  { value: '480p', label: '480p (640×480)', width: 640, height: 480 },
+  { value: '720p', label: '720p (1280×720)', width: 1280, height: 720 },
+  { value: '1080p', label: '1080p (1920×1080)', width: 1920, height: 1080 },
+  { value: '2k', label: '2K (2560×1440)', width: 2560, height: 1440 },
+  { value: '4k', label: '4K (3840×2160)', width: 3840, height: 2160 },
+  { value: 'custom', label: '自定义', width: 0, height: 0 },
+]
+
 interface VideoStreamConfig {
   subject: string
   autoResolution?: boolean
+  customWidth?: number
+  customHeight?: number
 }
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
@@ -26,6 +37,9 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [showAddModal, setShowAddModal] = useState(false)
   const [newSubject, setNewSubject] = useState('')
   const [newAutoResolution, setNewAutoResolution] = useState(false)
+  const [newCustomWidth, setNewCustomWidth] = useState(1920)
+  const [newCustomHeight, setNewCustomHeight] = useState(1080)
+  const [resolutionPreset, setResolutionPreset] = useState<string>('1080p')
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const subscriptionIdRef = useRef<string | null>(null)
@@ -48,9 +62,15 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       return
     }
     
+    const preset = RESOLUTION_PRESETS.find(p => p.value === resolutionPreset)
+    const width = preset?.value === 'custom' ? newCustomWidth : (preset?.width || 1920)
+    const height = preset?.value === 'custom' ? newCustomHeight : (preset?.height || 1080)
+    
     const newStream: VideoStreamConfig = {
       subject: newSubject.trim(),
-      autoResolution: newAutoResolution
+      autoResolution: newAutoResolution,
+      customWidth: width,
+      customHeight: height
     }
     
     setStreams(prev => [...prev, newStream])
@@ -58,7 +78,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     setNewAutoResolution(false)
     setShowAddModal(false)
     message.success('已添加视频流')
-  }, [newSubject, newAutoResolution])
+  }, [newSubject, newAutoResolution, resolutionPreset, newCustomWidth, newCustomHeight])
 
   const removeStream = useCallback(async (subject: string) => {
     if (activeStream === subject) {
@@ -91,7 +111,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     setReceivedFrames(0)
   }, [activeStream])
 
-  const startStream = useCallback(async (subject: string, autoResolution: boolean = false) => {
+  const startStream = useCallback(async (subject: string, config?: { autoResolution?: boolean; customWidth?: number; customHeight?: number }) => {
     await stopStream()
     
     setActiveStream(subject)
@@ -100,9 +120,15 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     setVideoDimensions(null)
 
     try {
-      const videoResult = autoResolution 
-        ? await window.nats.startVideoStreamAuto(subject)
-        : await window.nats.startVideoStream(subject)
+      let videoResult
+      
+      if (config?.autoResolution) {
+        videoResult = await window.nats.startVideoStreamAuto(subject)
+      } else if (config?.customWidth && config?.customHeight) {
+        videoResult = await window.nats.startVideoStreamWithResolution(subject, config.customWidth, config.customHeight)
+      } else {
+        videoResult = await window.nats.startVideoStream(subject)
+      }
       
       if (!videoResult.success) {
         setFfmpegAvailable(false)
@@ -285,14 +311,22 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   if (activeStream === stream.subject) {
                     stopStream()
                   } else {
-                    startStream(stream.subject, stream.autoResolution)
+                    startStream(stream.subject, { 
+                      autoResolution: stream.autoResolution,
+                      customWidth: stream.customWidth,
+                      customHeight: stream.customHeight
+                    })
                   }
                 }}
               >
                 <Space>
                   <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
                   <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
-                  {stream.autoResolution && <Tag color="purple">自动分辨率</Tag>}
+                  {stream.autoResolution ? (
+                    <Tag color="purple">自动</Tag>
+                  ) : (
+                    <Tag color="blue">{stream.customWidth}x{stream.customHeight}</Tag>
+                  )}
                 </Space>
                 <Space>
                   {activeStream === stream.subject && subscriptionStatus === 'subscribed' && (
@@ -398,7 +432,42 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               onChange={(e) => setNewSubject(e.target.value)}
             />
           </Form.Item>
-          <Form.Item label="分辨率模式">
+          <Form.Item label="分辨率">
+            <Select
+              value={resolutionPreset}
+              onChange={(value) => {
+                setResolutionPreset(value)
+                const preset = RESOLUTION_PRESETS.find(p => p.value === value)
+                if (preset && preset.width > 0) {
+                  setNewCustomWidth(preset.width)
+                  setNewCustomHeight(preset.height)
+                }
+              }}
+              options={RESOLUTION_PRESETS.map(p => ({ value: p.value, label: p.label }))}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          {resolutionPreset === 'custom' && (
+            <Form.Item label="自定义分辨率">
+              <Space>
+                <Input 
+                  type="number" 
+                  style={{ width: 100 }} 
+                  value={newCustomWidth}
+                  onChange={(e) => setNewCustomWidth(parseInt(e.target.value) || 1920)}
+                  addonBefore="宽"
+                />
+                <Input 
+                  type="number" 
+                  style={{ width: 100 }} 
+                  value={newCustomHeight}
+                  onChange={(e) => setNewCustomHeight(parseInt(e.target.value) || 1080)}
+                  addonBefore="高"
+                />
+              </Space>
+            </Form.Item>
+          )}
+          <Form.Item label="模式">
             <Space direction="vertical">
               <Switch 
                 checked={newAutoResolution}
@@ -406,8 +475,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               />
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {newAutoResolution 
-                  ? '自动检测视频分辨率（实验性）' 
-                  : '固定 640x480 分辨率（稳定）'}
+                  ? '自动检测视频分辨率（实验性，可能不稳定）' 
+                  : '使用指定分辨率（推荐）'}
               </Text>
             </Space>
           </Form.Item>

@@ -50,6 +50,7 @@ const IPC_CHANNELS = {
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
   VIDEO_START_STREAM: 'video:start-stream',
   VIDEO_START_STREAM_AUTO: 'video:start-stream-auto',
+  VIDEO_START_STREAM_RESOLUTION: 'video:start-stream-resolution',
   VIDEO_STOP_STREAM: 'video:stop-stream',
   VIDEO_FEED_DATA: 'video:feed-data',
   VIDEO_FRAME: 'video:frame',
@@ -104,6 +105,7 @@ export interface NatsApi {
   isWindowMaximized: () => Promise<boolean>
   startVideoStream: (subject: string) => Promise<{ success: boolean; error?: string }>
   startVideoStreamAuto: (subject: string) => Promise<{ success: boolean; error?: string }>
+  startVideoStreamWithResolution: (subject: string, width: number, height: number) => Promise<{ success: boolean; error?: string }>
   stopVideoStream: (subject: string) => Promise<void>
   feedVideoData: (subject: string, data: string) => Promise<{ success: boolean; error?: string }>
   onVideoFrame: (callback: (data: { subject: string; data: string; width: number; height: number; timestamp: number }) => void) => () => void
@@ -195,6 +197,7 @@ const natsApi: NatsApi = {
   
   startVideoStream: (subject) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_START_STREAM, subject),
   startVideoStreamAuto: (subject) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_START_STREAM_AUTO, subject),
+  startVideoStreamWithResolution: (subject, width, height) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_START_STREAM_RESOLUTION, subject, width, height),
   stopVideoStream: (subject) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_STOP_STREAM, subject),
   feedVideoData: (subject, data) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_FEED_DATA, subject, data),
   

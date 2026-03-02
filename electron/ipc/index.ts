@@ -42,6 +42,7 @@ export const IPC_CHANNELS = {
   NATS_REPLY_ERROR: 'nats:reply-error',
   VIDEO_START_STREAM: 'video:start-stream',
   VIDEO_START_STREAM_AUTO: 'video:start-stream-auto',
+  VIDEO_START_STREAM_RESOLUTION: 'video:start-stream-resolution',
   VIDEO_STOP_STREAM: 'video:stop-stream',
   VIDEO_FEED_DATA: 'video:feed-data',
   VIDEO_FRAME: 'video:frame',
@@ -350,6 +351,32 @@ export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
       }
       
       const result = await videoStreamService.startStreamWithAutoDetect({ subject })
+      
+      if (result.success) {
+        videoStreamService.onFrame(subject, (frame) => {
+          mainWindow.webContents.send(IPC_CHANNELS.VIDEO_FRAME, {
+            subject: frame.subject,
+            data: frame.data.toString('base64'),
+            width: frame.width,
+            height: frame.height,
+            timestamp: frame.timestamp
+          })
+        })
+      }
+      
+      return result
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.VIDEO_START_STREAM_RESOLUTION, async (_event, subject: string, width: number, height: number) => {
+    try {
+      if (!videoStreamService.isAvailable()) {
+        return { success: false, error: 'FFmpeg 不可用' }
+      }
+      
+      const result = await videoStreamService.startStreamWithResolution({ subject, width, height })
       
       if (result.success) {
         videoStreamService.onFrame(subject, (frame) => {
