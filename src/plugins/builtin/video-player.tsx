@@ -46,6 +46,12 @@ const CODEC_MIME: Record<VideoCodec, string> = {
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
 
+interface CodecSupportInfo {
+  codec: VideoCodec
+  supported: boolean
+  error?: string
+}
+
 class SimpleVideoDecoder {
   private decoder: VideoDecoder | null = null
   private canvas: HTMLCanvasElement | null = null
@@ -59,6 +65,7 @@ class SimpleVideoDecoder {
   private status: DecoderStatus = 'idle'
   private frameBuffer: VideoFrame[] = []
   private detectedCodec: VideoCodec | null = null
+  private supportInfo: CodecSupportInfo[] = []
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -85,7 +92,11 @@ class SimpleVideoDecoder {
     return this.detectedCodec
   }
 
-  async init(canvas: HTMLCanvasElement): Promise<boolean> {
+  getSupportInfo(): CodecSupportInfo[] {
+    return this.supportInfo
+  }
+
+  async init(canvas: HTMLCanvasElement): Promise<{ success: boolean; error?: string; supportInfo?: CodecSupportInfo[] }> {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d', { 
       alpha: false,
@@ -93,32 +104,32 @@ class SimpleVideoDecoder {
     })
 
     if (!this.ctx) {
-      console.error('Failed to get 2D context')
       this.setStatus('error')
-      return false
+      return { success: false, error: 'Canvas 2D 上下文初始化失败' }
     }
 
     this.setStatus('initializing')
 
-    if ('VideoDecoder' in window) {
-      const success = await this.initWebCodecs()
-      if (success) {
-        this.setStatus('ready')
-      } else {
-        this.setStatus('error')
-      }
-      return success
+    if (!('VideoDecoder' in window)) {
+      this.setStatus('error')
+      return { success: false, error: '浏览器不支持 WebCodecs API，请使用最新版 Chrome/Edge' }
     }
 
-    console.warn('WebCodecs not supported')
-    this.setStatus('error')
-    return false
+    const result = await this.initWebCodecs()
+    if (result.success) {
+      this.setStatus('ready')
+    } else {
+      this.setStatus('error')
+    }
+    return { ...result, supportInfo: this.supportInfo }
   }
 
-  private async initWebCodecs(): Promise<boolean> {
+  private async initWebCodecs(): Promise<{ success: boolean; error?: string }> {
     const codecsToTry = this.config.codec === 'auto' 
       ? ['h264', 'h265', 'vp9', 'av1'] as VideoCodec[]
       : [this.config.codec] as VideoCodec[]
+    
+    this.supportInfo = []
     
     for (const codec of codecsToTry) {
       const codecString = CODEC_MIME[codec]
@@ -128,6 +139,12 @@ class SimpleVideoDecoder {
         const support = await VideoDecoder.isConfigSupported({
           codec: codecString,
           optimizeForLatency: true
+        })
+
+        this.supportInfo.push({
+          codec,
+          supported: support.supported ?? false,
+          error: support.supported ? undefined : '不支持'
         })
 
         if (support.supported) {
@@ -148,15 +165,26 @@ class SimpleVideoDecoder {
           })
 
           this.detectedCodec = codec
-          return true
+          return { success: true }
         }
       } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : String(e)
+        this.supportInfo.push({
+          codec,
+          supported: false,
+          error: errorMsg
+        })
         console.error(`Codec ${codec} test failed:`, e)
       }
     }
     
-    console.error('No supported codec found')
-    return false
+    const supportedCodecs = this.supportInfo.filter(i => i.supported)
+    if (supportedCodecs.length === 0) {
+      const details = this.supportInfo.map(i => `${i.codec}: ${i.error}`).join(', ')
+      return { success: false, error: `所有编码格式都不支持 (${details})` }
+    }
+    
+    return { success: false, error: '解码器初始化失败' }
   }
 
   private handleFrame(frame: VideoFrame): void {
@@ -265,9 +293,9 @@ const VideoPlayer: React.FC<MessageRendererProps> = ({ message, isPreview }) => 
     
     decoder.setStatsCallback(setStats)
     
-    decoder.init(canvasRef.current).then(success => {
-      if (!success) {
-        setError('视频解码器初始化失败')
+    decoder.init(canvasRef.current).then(result => {
+      if (!result.success) {
+        setError(result.error || '视频解码器初始化失败')
       }
     })
     
@@ -399,7 +427,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
 
   const startStream = useCallback(async (subject: string, codec: VideoCodec) => {
     if (!webCodecsSupported) {
-      message.error('浏览器不支持 WebCodecs API')
+      message.error('浏览器不支持 WebCodecs API，请使用最新版 Chrome/Edge')
       return
     }
 
@@ -423,8 +451,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     decoder.setStatsCallback(setStats)
     decoder.setStatusCallback(setDecoderStatus)
     
-    const success = await decoder.init(canvasRef.current)
-    if (success) {
+    const result = await decoder.init(canvasRef.current)
+    if (result.success) {
       decoderRef.current = decoder
       const detectedCodec = decoder.getDetectedCodec()
       if (codec === 'auto' && detectedCodec) {
@@ -434,8 +462,26 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       }
       setSubscriptionStatus('subscribed')
     } else {
+      decoder.destroy()
       setSubscriptionStatus('error')
-      message.error('解码器初始化失败，请尝试其他编码格式')
+      const supportInfo = result.supportInfo || []
+      const errorDetails = supportInfo.map(i => 
+        `${i.codec.toUpperCase()}: ${i.supported ? '支持' : i.error}`
+      ).join('\n')
+      Modal.error({
+        title: '解码器初始化失败',
+        content: (
+          <div>
+            <p>{result.error}</p>
+            <p style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+              编码格式检测结果：
+            </p>
+            <pre style={{ fontSize: 11, background: '#f5f5f5', padding: 8, borderRadius: 4 }}>
+              {errorDetails || '无检测结果'}
+            </pre>
+          </div>
+        )
+      })
     }
   }, [webCodecsSupported, stopStream])
 
