@@ -34,7 +34,6 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [receivedFrames, setReceivedFrames] = useState(0)
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
   const [lastFrameTime, setLastFrameTime] = useState(0)
-  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     onSettingsChange({ ...settings, streams })
@@ -93,7 +92,6 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     setActiveStream(subject)
     setSubscriptionStatus('subscribing')
     setDecoderStatus('initializing')
-    setVideoDimensions(null)
 
     try {
       const videoResult = await window.nats.startVideoStream(subject)
@@ -151,10 +149,6 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
 
       setReceivedFrames(prev => prev + 1)
       
-      if (!videoDimensions || videoDimensions.width !== data.width || videoDimensions.height !== data.height) {
-        setVideoDimensions({ width: data.width, height: data.height })
-      }
-      
       const now = performance.now()
       const elapsed = now - lastFrameTime
       setLastFrameTime(now)
@@ -200,7 +194,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     return () => {
       unsubscribe?.()
     }
-  }, [activeStream, lastFrameTime, decoderStatus, videoDimensions])
+  }, [activeStream, lastFrameTime, decoderStatus])
 
   const handleReset = useCallback(() => {
     setStats({ fps: 0, frameCount: 0, latency: 0 })
@@ -313,7 +307,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           <Space>
             <Text>播放器</Text>
             {activeStream && <Tag color="blue">{activeStream}</Tag>}
-            {videoDimensions && <Tag color="purple">{videoDimensions.width}x{videoDimensions.height}</Tag>}
+            <Tag color="purple">640x480</Tag>
           </Space>
         }
         size="small"
@@ -337,7 +331,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          minHeight: videoDimensions ? 'auto' : 300,
+          minHeight: 300,
           maxHeight: 500
         }}>
           <canvas 

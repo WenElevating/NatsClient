@@ -91,12 +91,10 @@ class VideoStreamService {
       '-f', 'h264',
       '-fflags', 'nobuffer',
       '-flags', 'low_delay',
-      '-probesize', '32',
-      '-analyzeduration', '0',
       '-err_detect', 'ignore_err',
       '-ec', 'favor_inter',
       '-i', 'pipe:0',
-      '-vf', 'scale=iw:ih:flags=fast_bilinear',
+      '-vf', 'scale=640:480:flags=fast_bilinear',
       '-f', 'rawvideo',
       '-pix_fmt', 'rgba',
       '-color_range', 'pc',
@@ -108,18 +106,8 @@ class VideoStreamService {
     const ffmpeg = spawn(this.ffmpegPath, args)
     this.processes.set(subject, ffmpeg)
     
-    let dimensionDetected = false
-    const defaultWidth = 640
-    const defaultHeight = 480
-    
-    const detectTimeout = setTimeout(() => {
-      if (!dimensionDetected) {
-        console.log('Dimension detection timeout, using default 640x480')
-        this.frameDimensions.set(subject, { width: defaultWidth, height: defaultHeight })
-        this.expectedFrameSize.set(subject, defaultWidth * defaultHeight * 4)
-        dimensionDetected = true
-      }
-    }, 2000)
+    this.frameDimensions.set(subject, { width: 640, height: 480 })
+    this.expectedFrameSize.set(subject, 640 * 480 * 4)
 
     ffmpeg.stdin.on('error', (err) => {
       console.error('FFmpeg stdin error:', err)
@@ -136,31 +124,20 @@ class VideoStreamService {
           msg.includes('fps=') || 
           msg.includes('deprecated pixel format') ||
           msg.includes('corrupt decoded frame') ||
-          msg.includes('error while decoding MB')) {
+          msg.includes('error while decoding MB') ||
+          msg.includes('non-existing PPS') ||
+          msg.includes('decode_slice_header error') ||
+          msg.includes('no frame!') ||
+          msg.includes('Invalid data found') ||
+          msg.includes('Increasing reorder buffer')) {
         return
       }
       
-      const dimMatch = msg.match(/(\d+)x(\d+)/)
-      if (dimMatch && !dimensionDetected) {
-        const width = parseInt(dimMatch[1])
-        const height = parseInt(dimMatch[2])
-        if (width > 0 && height > 0) {
-          this.frameDimensions.set(subject, { width, height })
-          this.expectedFrameSize.set(subject, width * height * 4)
-          dimensionDetected = true
-          clearTimeout(detectTimeout)
-          console.log(`Detected video dimensions: ${width}x${height}`)
-        }
-      }
-      
-      if (!msg.includes('Input') && !msg.includes('Output') && !msg.includes('Stream')) {
-        console.log('FFmpeg stderr:', msg)
-      }
+      console.log('FFmpeg stderr:', msg)
     })
 
     ffmpeg.on('close', (code) => {
       console.log(`FFmpeg process for ${subject} exited with code ${code}`)
-      clearTimeout(detectTimeout)
       this.processes.delete(subject)
       this.frameBuffers.delete(subject)
       this.expectedFrameSize.delete(subject)
