@@ -93,6 +93,8 @@ class VideoStreamService {
       '-flags', 'low_delay',
       '-probesize', '32',
       '-analyzeduration', '0',
+      '-err_detect', 'ignore_err',
+      '-ec', 'favor_inter',
       '-i', 'pipe:0',
       '-vf', 'scale=iw:ih:flags=fast_bilinear',
       '-f', 'rawvideo',
@@ -130,7 +132,11 @@ class VideoStreamService {
 
     ffmpeg.stderr.on('data', (data) => {
       const msg = data.toString()
-      if (msg.includes('frame=') || msg.includes('fps=') || msg.includes('deprecated pixel format')) {
+      if (msg.includes('frame=') || 
+          msg.includes('fps=') || 
+          msg.includes('deprecated pixel format') ||
+          msg.includes('corrupt decoded frame') ||
+          msg.includes('error while decoding MB')) {
         return
       }
       
@@ -170,10 +176,11 @@ class VideoStreamService {
     return { success: true }
   }
 
+  private frameCount = 0
+
   private handleFrameData(subject: string, data: Buffer) {
     const dims = this.frameDimensions.get(subject)
     if (!dims) {
-      console.log('No dimensions yet, buffering data:', data.length)
       return
     }
     
@@ -185,7 +192,6 @@ class VideoStreamService {
     
     let combined = Buffer.concat(buffers)
     
-    let frameCount = 0
     while (combined.length >= expectedSize) {
       const frameData = combined.subarray(0, expectedSize)
       combined = combined.subarray(expectedSize)
@@ -203,11 +209,7 @@ class VideoStreamService {
       if (callbacks) {
         callbacks.forEach(cb => cb(frame))
       }
-      frameCount++
-    }
-    
-    if (frameCount > 0) {
-      console.log(`Processed ${frameCount} frames for ${subject}`)
+      this.frameCount++
     }
     
     this.frameBuffers.set(subject, combined.length > 0 ? [combined] : [])
