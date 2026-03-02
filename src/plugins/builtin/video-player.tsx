@@ -66,6 +66,7 @@ class SimpleVideoDecoder {
   private detectedCodec: VideoCodec | null = null
   private supportInfo: CodecSupportInfo[] = []
   private waitingForKeyframe = true
+  private codecString: string | null = null
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -150,11 +151,12 @@ class SimpleVideoDecoder {
         if (support.supported) {
           console.log(`Codec ${codec} supported`)
           
+          this.codecString = codecString
           this.decoder = new VideoDecoder({
             output: (frame) => this.handleFrame(frame),
             error: (e) => {
               console.error('VideoDecoder error:', e)
-              this.setStatus('error')
+              this.handleDecoderError()
             }
           })
 
@@ -218,16 +220,42 @@ class SimpleVideoDecoder {
     frame.close()
   }
 
-  async decode(data: ArrayBuffer | Uint8Array): Promise<{ success: boolean; error?: string }> {
-    if (!this.decoder) {
-      return { success: false, error: '解码器未初始化' }
-    }
+  private handleDecoderError(): void {
+    if (this.destroyed) return
     
+    this.setStatus('error')
+    this.waitingForKeyframe = true
+    this.decoder = null
+  }
+
+  async decode(data: ArrayBuffer | Uint8Array): Promise<{ success: boolean; error?: string }> {
     if (this.destroyed) {
       return { success: false, error: '解码器已销毁' }
     }
 
     try {
+      if (!this.decoder || this.decoder.state === 'closed') {
+        if (this.codecString && this.canvas) {
+          this.decoder = new VideoDecoder({
+            output: (frame) => this.handleFrame(frame),
+            error: (e) => {
+              console.error('VideoDecoder error:', e)
+              this.handleDecoderError()
+            }
+          })
+
+          this.decoder.configure({
+            codec: this.codecString,
+            optimizeForLatency: true,
+            hardwareAcceleration: 'prefer-hardware'
+          })
+          
+          this.waitingForKeyframe = true
+        } else {
+          return { success: false, error: '解码器未初始化' }
+        }
+      }
+      
       const chunk = new Uint8Array(data)
       
       const isKeyFrame = this.detectKeyFrame(chunk)
