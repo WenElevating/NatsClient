@@ -263,19 +263,18 @@ class SimpleVideoDecoder {
       let isKeyFrame = this.detectKeyFrame(chunk)
       
       if (this.waitingForKeyframe && !this.firstFrameProcessed) {
-        if (!isKeyFrame) {
-          console.log('First frame not detected as keyframe, trying as keyframe anyway...')
-          isKeyFrame = true
-        }
+        console.log('First frame received, treating as keyframe')
+        isKeyFrame = true
         this.firstFrameProcessed = true
       }
       
-      if (this.waitingForKeyframe) {
-        if (!isKeyFrame) {
-          console.log('Skipping non-keyframe, waiting for keyframe...')
-          return { success: false, error: '等待关键帧...' }
-        }
-        console.log('Received keyframe, starting decode...')
+      if (this.waitingForKeyframe && !isKeyFrame) {
+        console.log('Skipping non-keyframe, waiting for keyframe...')
+        return { success: false, error: '等待关键帧...' }
+      }
+      
+      if (isKeyFrame) {
+        console.log('Processing keyframe')
         this.waitingForKeyframe = false
       }
       
