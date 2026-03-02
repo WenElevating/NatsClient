@@ -54,6 +54,7 @@ const IPC_CHANNELS = {
   VIDEO_STOP_STREAM: 'video:stop-stream',
   VIDEO_FEED_DATA: 'video:feed-data',
   VIDEO_FRAME: 'video:frame',
+  VIDEO_RESOLUTION_DETECTED: 'video:resolution-detected',
 } as const
 
 export interface NatsApi {
@@ -109,6 +110,7 @@ export interface NatsApi {
   stopVideoStream: (subject: string) => Promise<void>
   feedVideoData: (subject: string, data: string) => Promise<{ success: boolean; error?: string }>
   onVideoFrame: (callback: (data: { subject: string; data: string; width: number; height: number; timestamp: number }) => void) => () => void
+  onResolutionDetected: (callback: (data: { subject: string; width: number; height: number }) => void) => () => void
 }
 
 const natsApi: NatsApi = {
@@ -205,6 +207,12 @@ const natsApi: NatsApi = {
     const handler = (_event: Electron.IpcRendererEvent, data: { subject: string; data: string; width: number; height: number; timestamp: number }) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.VIDEO_FRAME, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.VIDEO_FRAME, handler)
+  },
+  
+  onResolutionDetected: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { subject: string; width: number; height: number }) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.VIDEO_RESOLUTION_DETECTED, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.VIDEO_RESOLUTION_DETECTED, handler)
   },
 }
 

@@ -51,10 +51,25 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
   const [lastFrameTime, setLastFrameTime] = useState(0)
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null)
+  const [detectedResolution, setDetectedResolution] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     onSettingsChange({ ...settings, streams })
   }, [streams])
+
+  useEffect(() => {
+    const handleResolutionDetected = (data: { subject: string; width: number; height: number }) => {
+      if (data.subject === activeStream) {
+        setDetectedResolution({ width: data.width, height: data.height })
+        message.info(`检测到视频分辨率: ${data.width}x${data.height}`)
+      }
+    }
+
+    const unsubscribe = window.nats.onResolutionDetected?.(handleResolutionDetected)
+    return () => {
+      unsubscribe?.()
+    }
+  }, [activeStream])
 
   const addStream = useCallback(() => {
     if (!newSubject.trim()) {
@@ -354,6 +369,11 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           <Space>
             <Text>播放器</Text>
             {activeStream && <Tag color="blue">{activeStream}</Tag>}
+            {detectedResolution ? (
+              <Tooltip title="检测到的原始分辨率">
+                <Tag color="orange">{detectedResolution.width}x{detectedResolution.height}</Tag>
+              </Tooltip>
+            ) : null}
             {videoDimensions ? (
               <Tag color="purple">{videoDimensions.width}x{videoDimensions.height}</Tag>
             ) : (

@@ -46,6 +46,7 @@ export const IPC_CHANNELS = {
   VIDEO_STOP_STREAM: 'video:stop-stream',
   VIDEO_FEED_DATA: 'video:feed-data',
   VIDEO_FRAME: 'video:frame',
+  VIDEO_RESOLUTION_DETECTED: 'video:resolution-detected',
 } as const
 
 export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
@@ -75,6 +76,10 @@ export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
 
   natsService.on('reply-service-error', (data) => {
     mainWindow.webContents.send(IPC_CHANNELS.NATS_REPLY_ERROR, data)
+  })
+
+  videoStreamService.onResolutionDetected((data) => {
+    mainWindow.webContents.send(IPC_CHANNELS.VIDEO_RESOLUTION_DETECTED, data)
   })
 
   ipcMain.handle(IPC_CHANNELS.NATS_CONNECT, async (_event, config: ConnectionConfig) => {

@@ -21,11 +21,13 @@ export interface VideoFrame {
 }
 
 type FrameCallback = (frame: VideoFrame) => void
+type ResolutionCallback = (data: { subject: string; width: number; height: number }) => void
 
 class VideoStreamService {
   private ffmpegPath: string | null = null
   private processes: Map<string, ChildProcess> = new Map()
   private callbacks: Map<string, Set<FrameCallback>> = new Map()
+  private resolutionCallbacks: Set<ResolutionCallback> = new Set()
   private frameBuffers: Map<string, Buffer[]> = new Map()
   private expectedFrameSize: Map<string, number> = new Map()
   private frameDimensions: Map<string, { width: number; height: number }> = new Map()
@@ -133,6 +135,16 @@ class VideoStreamService {
         return
       }
       
+      const streamMatch = msg.match(/Video:.*?(\d+)x(\d+)/)
+      if (streamMatch) {
+        const width = parseInt(streamMatch[1])
+        const height = parseInt(streamMatch[2])
+        if (width > 0 && height > 0) {
+          console.log(`Detected original video resolution: ${width}x${height}`)
+          this.notifyResolutionDetected(subject, width, height)
+        }
+      }
+      
       console.log('FFmpeg stderr:', msg)
     })
 
@@ -210,6 +222,16 @@ class VideoStreamService {
           msg.includes('Invalid data found') ||
           msg.includes('Increasing reorder buffer')) {
         return
+      }
+      
+      const streamMatch = msg.match(/Video:.*?(\d+)x(\d+)/)
+      if (streamMatch) {
+        const origWidth = parseInt(streamMatch[1])
+        const origHeight = parseInt(streamMatch[2])
+        if (origWidth > 0 && origHeight > 0 && (origWidth !== width || origHeight !== height)) {
+          console.log(`Original video resolution: ${origWidth}x${origHeight}, scaled to ${width}x${height}`)
+          this.notifyResolutionDetected(subject, origWidth, origHeight)
+        }
       }
       
       console.log('FFmpeg stderr:', msg)
@@ -446,6 +468,17 @@ class VideoStreamService {
         callbacks.delete(callback)
       }
     }
+  }
+
+  onResolutionDetected(callback: ResolutionCallback): () => void {
+    this.resolutionCallbacks.add(callback)
+    return () => {
+      this.resolutionCallbacks.delete(callback)
+    }
+  }
+
+  private notifyResolutionDetected(subject: string, width: number, height: number) {
+    this.resolutionCallbacks.forEach(cb => cb({ subject, width, height }))
   }
 
   stopAllStreams(): void {
