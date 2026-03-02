@@ -65,6 +65,7 @@ class SimpleVideoDecoder {
   private status: DecoderStatus = 'idle'
   private detectedCodec: VideoCodec | null = null
   private supportInfo: CodecSupportInfo[] = []
+  private waitingForKeyframe = true
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -229,8 +230,18 @@ class SimpleVideoDecoder {
     try {
       const chunk = new Uint8Array(data)
       
+      const isKeyFrame = this.detectKeyFrame(chunk)
+      
+      if (this.waitingForKeyframe && !isKeyFrame) {
+        return { success: false, error: '等待关键帧...' }
+      }
+      
+      if (isKeyFrame) {
+        this.waitingForKeyframe = false
+      }
+      
       const encodedChunk = new EncodedVideoChunk({
-        type: 'key',
+        type: isKeyFrame ? 'key' : 'delta',
         timestamp: performance.now() * 1000,
         data: chunk
       })
@@ -241,6 +252,24 @@ class SimpleVideoDecoder {
       const errorMsg = e instanceof Error ? e.message : String(e)
       return { success: false, error: errorMsg }
     }
+  }
+
+  private detectKeyFrame(data: Uint8Array): boolean {
+    for (let i = 0; i < data.length - 4; i++) {
+      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
+        const nalType = data[i + 4] & 0x1F
+        if (nalType === 5 || nalType === 7 || nalType === 8) {
+          return true
+        }
+      }
+      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) {
+        const nalType = data[i + 3] & 0x1F
+        if (nalType === 5 || nalType === 7 || nalType === 8) {
+          return true
+        }
+      }
+    }
+    return false
   }
 
   getStats(): { fps: number; frameCount: number; latency: number } {
@@ -257,6 +286,7 @@ class SimpleVideoDecoder {
     if (this.decoder) {
       this.decoder.reset()
       this.frameCount = 0
+      this.waitingForKeyframe = true
       this.setStatus('ready')
     }
   }
