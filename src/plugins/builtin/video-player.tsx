@@ -49,9 +49,12 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [subscriptionStatus, setSubscriptionStatus] = useState<'none' | 'subscribing' | 'subscribed' | 'error'>('none')
   const [receivedFrames, setReceivedFrames] = useState(0)
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
-  const [lastFrameTime, setLastFrameTime] = useState(0)
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null)
   const [detectedResolution, setDetectedResolution] = useState<{ width: number; height: number } | null>(null)
+  
+  const fpsHistoryRef = useRef<number[]>([])
+  const lastFrameTimeRef = useRef(0)
+  const frameCountRef = useRef(0)
 
   useEffect(() => {
     onSettingsChange({ ...settings, streams })
@@ -203,15 +206,27 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       }
       
       const now = performance.now()
-      const elapsed = now - lastFrameTime
-      setLastFrameTime(now)
+      const elapsed = now - lastFrameTimeRef.current
+      lastFrameTimeRef.current = now
       
-      if (elapsed > 0 && elapsed < 1000) {
-        setStats(prev => ({
-          fps: Math.round(1000 / elapsed),
-          frameCount: prev.frameCount + 1,
-          latency: Math.round(elapsed)
-        }))
+      if (elapsed > 0 && elapsed < 2000) {
+        const instantFps = 1000 / elapsed
+        fpsHistoryRef.current.push(instantFps)
+        
+        if (fpsHistoryRef.current.length > 30) {
+          fpsHistoryRef.current.shift()
+        }
+        
+        const avgFps = fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length
+        
+        frameCountRef.current++
+        if (frameCountRef.current % 10 === 0) {
+          setStats(prev => ({
+            fps: Math.round(avgFps),
+            frameCount: prev.frameCount + 10,
+            latency: Math.round(elapsed)
+          }))
+        }
       }
 
       if (canvasRef.current.width !== data.width || canvasRef.current.height !== data.height) {
@@ -247,11 +262,13 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     return () => {
       unsubscribe?.()
     }
-  }, [activeStream, lastFrameTime, decoderStatus, videoDimensions])
+  }, [activeStream, decoderStatus, videoDimensions])
 
   const handleReset = useCallback(() => {
     setStats({ fps: 0, frameCount: 0, latency: 0 })
     setReceivedFrames(0)
+    fpsHistoryRef.current = []
+    frameCountRef.current = 0
   }, [])
 
   const getStatusTag = () => {
