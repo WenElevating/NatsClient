@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
-import { Button, Space, Typography, Tag, Input, Form, Card, message, Modal, Tooltip, Alert } from 'antd'
+import { Button, Space, Typography, Tag, Input, Form, Card, message, Modal, Tooltip, Alert, Switch } from 'antd'
 import { 
   PlayCircleOutlined, 
   ReloadOutlined,
@@ -15,6 +15,7 @@ const { Text } = Typography
 
 interface VideoStreamConfig {
   subject: string
+  autoResolution?: boolean
 }
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
@@ -24,6 +25,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [activeStream, setActiveStream] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newSubject, setNewSubject] = useState('')
+  const [newAutoResolution, setNewAutoResolution] = useState(false)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const subscriptionIdRef = useRef<string | null>(null)
@@ -34,6 +36,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [receivedFrames, setReceivedFrames] = useState(0)
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
   const [lastFrameTime, setLastFrameTime] = useState(0)
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     onSettingsChange({ ...settings, streams })
@@ -46,14 +49,16 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     }
     
     const newStream: VideoStreamConfig = {
-      subject: newSubject.trim()
+      subject: newSubject.trim(),
+      autoResolution: newAutoResolution
     }
     
     setStreams(prev => [...prev, newStream])
     setNewSubject('')
+    setNewAutoResolution(false)
     setShowAddModal(false)
     message.success('已添加视频流')
-  }, [newSubject])
+  }, [newSubject, newAutoResolution])
 
   const removeStream = useCallback(async (subject: string) => {
     if (activeStream === subject) {
@@ -86,15 +91,18 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     setReceivedFrames(0)
   }, [activeStream])
 
-  const startStream = useCallback(async (subject: string) => {
+  const startStream = useCallback(async (subject: string, autoResolution: boolean = false) => {
     await stopStream()
     
     setActiveStream(subject)
     setSubscriptionStatus('subscribing')
     setDecoderStatus('initializing')
+    setVideoDimensions(null)
 
     try {
-      const videoResult = await window.nats.startVideoStream(subject)
+      const videoResult = autoResolution 
+        ? await window.nats.startVideoStreamAuto(subject)
+        : await window.nats.startVideoStream(subject)
       
       if (!videoResult.success) {
         setFfmpegAvailable(false)
@@ -149,6 +157,10 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
 
       setReceivedFrames(prev => prev + 1)
       
+      if (!videoDimensions || videoDimensions.width !== data.width || videoDimensions.height !== data.height) {
+        setVideoDimensions({ width: data.width, height: data.height })
+      }
+      
       const now = performance.now()
       const elapsed = now - lastFrameTime
       setLastFrameTime(now)
@@ -194,7 +206,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     return () => {
       unsubscribe?.()
     }
-  }, [activeStream, lastFrameTime, decoderStatus])
+  }, [activeStream, lastFrameTime, decoderStatus, videoDimensions])
 
   const handleReset = useCallback(() => {
     setStats({ fps: 0, frameCount: 0, latency: 0 })
@@ -273,13 +285,14 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   if (activeStream === stream.subject) {
                     stopStream()
                   } else {
-                    startStream(stream.subject)
+                    startStream(stream.subject, stream.autoResolution)
                   }
                 }}
               >
                 <Space>
                   <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
                   <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
+                  {stream.autoResolution && <Tag color="purple">自动分辨率</Tag>}
                 </Space>
                 <Space>
                   {activeStream === stream.subject && subscriptionStatus === 'subscribed' && (
@@ -307,7 +320,11 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           <Space>
             <Text>播放器</Text>
             {activeStream && <Tag color="blue">{activeStream}</Tag>}
-            <Tag color="purple">640x480</Tag>
+            {videoDimensions ? (
+              <Tag color="purple">{videoDimensions.width}x{videoDimensions.height}</Tag>
+            ) : (
+              <Tag color="purple">640x480</Tag>
+            )}
           </Space>
         }
         size="small"
@@ -331,7 +348,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          minHeight: 300,
+          minHeight: videoDimensions ? 'auto' : 300,
           maxHeight: 500
         }}>
           <canvas 
@@ -380,6 +397,19 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
             />
+          </Form.Item>
+          <Form.Item label="分辨率模式">
+            <Space direction="vertical">
+              <Switch 
+                checked={newAutoResolution}
+                onChange={setNewAutoResolution}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {newAutoResolution 
+                  ? '自动检测视频分辨率（实验性）' 
+                  : '固定 640x480 分辨率（稳定）'}
+              </Text>
+            </Space>
           </Form.Item>
         </Form>
       </Modal>

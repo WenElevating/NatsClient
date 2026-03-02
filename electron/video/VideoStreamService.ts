@@ -153,6 +153,115 @@ class VideoStreamService {
     return { success: true }
   }
 
+  async startStreamWithAutoDetect(options: VideoStreamOptions): Promise<{ success: boolean; error?: string }> {
+    if (!this.ffmpegPath) {
+      return { success: false, error: 'FFmpeg 不可用' }
+    }
+
+    const { subject } = options
+
+    if (this.processes.has(subject)) {
+      return { success: false, error: '该视频流已在处理中' }
+    }
+
+    this.frameBuffers.set(subject, [])
+
+    const args = [
+      '-f', 'h264',
+      '-fflags', 'nobuffer',
+      '-flags', 'low_delay',
+      '-err_detect', 'ignore_err',
+      '-ec', 'favor_inter',
+      '-i', 'pipe:0',
+      '-vf', 'scale=iw:ih:flags=fast_bilinear',
+      '-f', 'rawvideo',
+      '-pix_fmt', 'rgba',
+      '-color_range', 'pc',
+      'pipe:1'
+    ]
+
+    console.log('Starting ffmpeg with auto-detect:', args.join(' '))
+
+    const ffmpeg = spawn(this.ffmpegPath, args)
+    this.processes.set(subject, ffmpeg)
+    
+    let dimensionDetected = false
+
+    ffmpeg.stdin.on('error', (err) => {
+      console.error('FFmpeg stdin error:', err)
+      this.stopStream(subject)
+    })
+
+    ffmpeg.stdout.on('data', (data: Buffer) => {
+      if (!dimensionDetected) {
+        console.log('First frame bytes length:', data.length)
+        
+        const possibleHeights = [480, 576, 720, 1080, 2160]
+        const possibleWidths = [640, 720, 800, 1280, 1920, 3840]
+        
+        for (const h of possibleHeights) {
+          for (const w of possibleWidths) {
+            const expectedSize = w * h * 4
+            if (data.length === expectedSize) {
+              console.log(`Auto-detected resolution: ${w}x${h}`)
+              this.frameDimensions.set(subject, { width: w, height: h })
+              this.expectedFrameSize.set(subject, expectedSize)
+              dimensionDetected = true
+              break
+            }
+          }
+          if (dimensionDetected) break
+        }
+        
+        if (!dimensionDetected) {
+          const estimatedPixels = Math.floor(data.length / 4)
+          const estimatedWidth = Math.round(Math.sqrt(estimatedPixels * 16 / 9))
+          const estimatedHeight = Math.round(estimatedWidth * 9 / 16)
+          console.log(`Estimated resolution: ${estimatedWidth}x${estimatedHeight} (${data.length} bytes)`)
+          this.frameDimensions.set(subject, { width: estimatedWidth, height: estimatedHeight })
+          this.expectedFrameSize.set(subject, data.length)
+          dimensionDetected = true
+        }
+      }
+      
+      this.handleFrameData(subject, data)
+    })
+
+    ffmpeg.stderr.on('data', (data) => {
+      const msg = data.toString()
+      if (msg.includes('frame=') || 
+          msg.includes('fps=') || 
+          msg.includes('deprecated pixel format') ||
+          msg.includes('corrupt decoded frame') ||
+          msg.includes('error while decoding MB') ||
+          msg.includes('non-existing PPS') ||
+          msg.includes('decode_slice_header error') ||
+          msg.includes('no frame!') ||
+          msg.includes('Invalid data found') ||
+          msg.includes('Increasing reorder buffer')) {
+        return
+      }
+      
+      console.log('FFmpeg stderr:', msg)
+    })
+
+    ffmpeg.on('close', (code) => {
+      console.log(`FFmpeg process for ${subject} exited with code ${code}`)
+      this.processes.delete(subject)
+      this.frameBuffers.delete(subject)
+      this.expectedFrameSize.delete(subject)
+      this.callbacks.delete(subject)
+      this.frameDimensions.delete(subject)
+    })
+
+    ffmpeg.on('error', (err) => {
+      console.error('FFmpeg process error:', err)
+      this.stopStream(subject)
+    })
+
+    return { success: true }
+  }
+
   private frameCount = 0
 
   private handleFrameData(subject: string, data: Buffer) {
