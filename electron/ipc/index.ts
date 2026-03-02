@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { natsService } from '../nats/NatsService'
+import { videoStreamService } from '../video/VideoStreamService'
 import type { ConnectionConfig, PublishOptions, RequestOptions, StreamConfigOptions, ConsumerConfigOptions } from '../../src/types/nats'
 
 export const IPC_CHANNELS = {
@@ -39,6 +40,10 @@ export const IPC_CHANNELS = {
   NATS_LOG: 'nats:log',
   NATS_REPLY_SENT: 'nats:reply-sent',
   NATS_REPLY_ERROR: 'nats:reply-error',
+  VIDEO_START_STREAM: 'video:start-stream',
+  VIDEO_STOP_STREAM: 'video:stop-stream',
+  VIDEO_FEED_DATA: 'video:feed-data',
+  VIDEO_FRAME: 'video:frame',
 } as const
 
 export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
@@ -310,8 +315,58 @@ export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
     }
   })
+
+  ipcMain.handle(IPC_CHANNELS.VIDEO_START_STREAM, async (_event, subject: string, options?: { width?: number; height?: number; fps?: number }) => {
+    try {
+      if (!videoStreamService.isAvailable()) {
+        return { success: false, error: 'FFmpeg 不可用' }
+      }
+      
+      const result = await videoStreamService.startStream({
+        subject,
+        width: options?.width || 640,
+        height: options?.height || 480
+      })
+      
+      if (result.success) {
+        videoStreamService.onFrame(subject, (frame) => {
+          mainWindow.webContents.send(IPC_CHANNELS.VIDEO_FRAME, {
+            subject: frame.subject,
+            data: frame.data.toString('base64'),
+            width: frame.width,
+            height: frame.height,
+            timestamp: frame.timestamp
+          })
+        })
+      }
+      
+      return result
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.VIDEO_STOP_STREAM, async (_event, subject: string) => {
+    try {
+      videoStreamService.stopStream(subject)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.VIDEO_FEED_DATA, async (_event, subject: string, data: string) => {
+    try {
+      const buffer = Buffer.from(data, 'base64')
+      const success = videoStreamService.feedData(subject, buffer)
+      return { success }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
 }
 
 export function cleanupIpcHandlers(): void {
   natsService.removeAllListeners()
+  videoStreamService.stopAllStreams()
 }

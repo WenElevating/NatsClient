@@ -48,6 +48,10 @@ const IPC_CHANNELS = {
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
+  VIDEO_START_STREAM: 'video:start-stream',
+  VIDEO_STOP_STREAM: 'video:stop-stream',
+  VIDEO_FEED_DATA: 'video:feed-data',
+  VIDEO_FRAME: 'video:frame',
 } as const
 
 export interface NatsApi {
@@ -97,6 +101,10 @@ export interface NatsApi {
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
   isWindowMaximized: () => Promise<boolean>
+  startVideoStream: (subject: string, options?: { width?: number; height?: number; fps?: number }) => Promise<{ success: boolean; error?: string }>
+  stopVideoStream: (subject: string) => Promise<void>
+  feedVideoData: (subject: string, data: string) => Promise<{ success: boolean; error?: string }>
+  onVideoFrame: (callback: (data: { subject: string; data: string; width: number; height: number; timestamp: number }) => void) => () => void
 }
 
 const natsApi: NatsApi = {
@@ -182,6 +190,16 @@ const natsApi: NatsApi = {
   maximizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),
   closeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
   isWindowMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+  
+  startVideoStream: (subject, options) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_START_STREAM, subject, options),
+  stopVideoStream: (subject) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_STOP_STREAM, subject),
+  feedVideoData: (subject, data) => ipcRenderer.invoke(IPC_CHANNELS.VIDEO_FEED_DATA, subject, data),
+  
+  onVideoFrame: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { subject: string; data: string; width: number; height: number; timestamp: number }) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.VIDEO_FRAME, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.VIDEO_FRAME, handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('nats', natsApi)

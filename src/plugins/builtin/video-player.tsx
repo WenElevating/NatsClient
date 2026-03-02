@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
-import { Button, Space, Select, Typography, Tag, Input, Form, Card, message, Modal, Tooltip, Alert } from 'antd'
+import { Button, Space, Typography, Tag, Input, Form, Card, message, Modal, Tooltip, Alert } from 'antd'
 import { 
   PlayCircleOutlined, 
   ReloadOutlined,
@@ -13,191 +13,31 @@ import type { NatsClientPlugin, PluginPanelProps } from '../types'
 
 const { Text } = Typography
 
-type VideoCodec = 'h264' | 'h265' | 'vp8' | 'vp9' | 'av1' | 'auto'
-
 interface VideoStreamConfig {
   subject: string
-  codec?: VideoCodec
-  autoPlay: boolean
-  lowLatency: boolean
+  width?: number
+  height?: number
 }
-
-const CODEC_OPTIONS = [
-  { value: 'auto', label: '自动检测' },
-  { value: 'h264', label: 'H.264 (AVC)' },
-  { value: 'h265', label: 'H.265 (HEVC)' },
-  { value: 'vp9', label: 'VP9' },
-  { value: 'av1', label: 'AV1' }
-]
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
-
-class BroadwayDecoder {
-  private canvas: HTMLCanvasElement | null = null
-  private ctx: CanvasRenderingContext2D | null = null
-  private decoder: any = null
-  private frameCount = 0
-  private lastFrameTime = 0
-  private destroyed = false
-  private onStatsUpdate?: (stats: { fps: number; frameCount: number; latency: number }) => void
-  private onStatusChange?: (status: DecoderStatus) => void
-  private status: DecoderStatus = 'idle'
-  private width = 640
-  private height = 480
-  private BroadwayClass: any = null
-
-  async initBroadway(): Promise<boolean> {
-    try {
-      const module = await import('broadway-player')
-      this.BroadwayClass = module.default || module
-      
-      this.decoder = new this.BroadwayClass({
-        useWorker: false,
-        webgl: 'auto',
-        size: { width: this.width, height: this.height }
-      })
-      
-      this.decoder.on('picture', (picture: any) => {
-        this.handlePicture(picture)
-      })
-      
-      this.decoder.on('error', (error: Error) => {
-        console.error('Broadway error:', error)
-        this.setStatus('error')
-      })
-      
-      return true
-    } catch (e) {
-      console.error('Failed to init Broadway:', e)
-      return false
-    }
-  }
-
-  setStatsCallback(callback: (stats: { fps: number; frameCount: number; latency: number }) => void) {
-    this.onStatsUpdate = callback
-  }
-
-  setStatusCallback(callback: (status: DecoderStatus) => void) {
-    this.onStatusChange = callback
-  }
-
-  private setStatus(status: DecoderStatus) {
-    this.status = status
-    this.onStatusChange?.(status)
-  }
-
-  getStatus(): DecoderStatus {
-    return this.status
-  }
-
-  async init(canvas: HTMLCanvasElement): Promise<{ success: boolean; error?: string }> {
-    this.canvas = canvas
-    this.ctx = canvas.getContext('2d', { 
-      alpha: false,
-      desynchronized: true
-    })
-
-    if (!this.ctx) {
-      this.setStatus('error')
-      return { success: false, error: 'Canvas 2D 上下文初始化失败' }
-    }
-
-    const broadwayOk = await this.initBroadway()
-    if (!broadwayOk) {
-      this.setStatus('error')
-      return { success: false, error: 'Broadway 解码器初始化失败' }
-    }
-
-    this.setStatus('ready')
-    return { success: true }
-  }
-
-  private handlePicture(picture: any) {
-    if (this.destroyed || !this.ctx || !this.canvas) return
-
-    const { width, height, data } = picture
-    
-    if (this.canvas.width !== width || this.canvas.height !== height) {
-      this.canvas.width = width
-      this.canvas.height = height
-    }
-
-    const imageData = new ImageData(new Uint8ClampedArray(data), width, height)
-    this.ctx.putImageData(imageData, 0, 0)
-    
-    this.frameCount++
-    this.lastFrameTime = performance.now()
-    
-    if (this.status !== 'decoding') {
-      this.setStatus('decoding')
-    }
-    
-    if (this.onStatsUpdate) {
-      this.onStatsUpdate(this.getStats())
-    }
-  }
-
-  decode(data: ArrayBuffer | Uint8Array): { success: boolean; error?: string } {
-    if (this.destroyed) {
-      return { success: false, error: '解码器已销毁' }
-    }
-
-    if (!this.decoder) {
-      return { success: false, error: '解码器未初始化' }
-    }
-
-    try {
-      const chunk = new Uint8Array(data)
-      this.decoder.decode(chunk)
-      return { success: true }
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e)
-      return { success: false, error: errorMsg }
-    }
-  }
-
-  getStats(): { fps: number; frameCount: number; latency: number } {
-    const now = performance.now()
-    const elapsed = (now - this.lastFrameTime) / 1000
-    return {
-      fps: elapsed > 0 && elapsed < 1 ? Math.round(1 / elapsed) : 0,
-      frameCount: this.frameCount,
-      latency: Math.round(elapsed * 1000)
-    }
-  }
-
-  reset(): void {
-    this.frameCount = 0
-    this.setStatus('ready')
-  }
-
-  destroy(): void {
-    this.destroyed = true
-    this.ctx = null
-    this.canvas = null
-    if (this.decoder) {
-      this.decoder = null
-    }
-    this.setStatus('idle')
-  }
-}
 
 const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChange }) => {
   const [streams, setStreams] = useState<VideoStreamConfig[]>(settings.streams || [])
   const [activeStream, setActiveStream] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newSubject, setNewSubject] = useState('')
-  const [newCodec, setNewCodec] = useState<VideoCodec>('auto')
+  const [newWidth, setNewWidth] = useState(640)
+  const [newHeight, setNewHeight] = useState(480)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const decoderRef = useRef<BroadwayDecoder | null>(null)
   const subscriptionIdRef = useRef<string | null>(null)
   
   const [stats, setStats] = useState({ fps: 0, frameCount: 0, latency: 0 })
   const [decoderStatus, setDecoderStatus] = useState<DecoderStatus>('idle')
   const [subscriptionStatus, setSubscriptionStatus] = useState<'none' | 'subscribing' | 'subscribed' | 'error'>('none')
   const [receivedFrames, setReceivedFrames] = useState(0)
-  const [decodeErrors, setDecodeErrors] = useState<string[]>([])
+  const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
+  const [lastFrameTime, setLastFrameTime] = useState(0)
 
   useEffect(() => {
     onSettingsChange({ ...settings, streams })
@@ -211,16 +51,15 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     
     const newStream: VideoStreamConfig = {
       subject: newSubject.trim(),
-      codec: newCodec,
-      autoPlay: true,
-      lowLatency: true
+      width: newWidth,
+      height: newHeight
     }
     
     setStreams(prev => [...prev, newStream])
     setNewSubject('')
     setShowAddModal(false)
     message.success('已添加视频流')
-  }, [newSubject, newCodec])
+  }, [newSubject, newWidth, newHeight])
 
   const removeStream = useCallback(async (subject: string) => {
     if (activeStream === subject) {
@@ -239,61 +78,56 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       subscriptionIdRef.current = null
     }
     
-    if (decoderRef.current) {
-      decoderRef.current.destroy()
-      decoderRef.current = null
+    if (activeStream) {
+      try {
+        await window.nats.stopVideoStream(activeStream)
+      } catch (e) {
+        console.error('Stop video stream error:', e)
+      }
     }
     
     setActiveStream(null)
     setSubscriptionStatus('none')
     setDecoderStatus('idle')
     setReceivedFrames(0)
-    setDecodeErrors([])
-  }, [])
+  }, [activeStream])
 
-  const startStream = useCallback(async (subject: string) => {
+  const startStream = useCallback(async (subject: string, width: number, height: number) => {
     await stopStream()
     
     setActiveStream(subject)
     setSubscriptionStatus('subscribing')
-    setDecodeErrors([])
+    setDecoderStatus('initializing')
 
-    if (!canvasRef.current) {
-      setSubscriptionStatus('error')
-      message.error('Canvas 未初始化')
-      return
-    }
-    
-    const decoder = new BroadwayDecoder()
-    decoder.setStatsCallback(setStats)
-    decoder.setStatusCallback(setDecoderStatus)
-    
-    const result = await decoder.init(canvasRef.current)
-    if (result.success) {
-      decoderRef.current = decoder
+    try {
+      const videoResult = await window.nats.startVideoStream(subject, { width, height })
       
-      try {
-        const subResult = await window.nats.subscribe(subject)
-        if (subResult.success && subResult.subscriptionId) {
-          subscriptionIdRef.current = subResult.subscriptionId
-          setSubscriptionStatus('subscribed')
-          message.success(`已订阅 ${subject}`)
-        } else {
-          decoder.destroy()
-          decoderRef.current = null
-          setSubscriptionStatus('error')
-          message.error(`订阅失败: ${subResult.error || '未知错误'}`)
-        }
-      } catch (e) {
-        decoder.destroy()
-        decoderRef.current = null
+      if (!videoResult.success) {
+        setFfmpegAvailable(false)
         setSubscriptionStatus('error')
-        message.error(`订阅异常: ${e}`)
+        setDecoderStatus('error')
+        message.error(videoResult.error || 'FFmpeg 不可用')
+        return
       }
-    } else {
-      decoder.destroy()
+      
+      setFfmpegAvailable(true)
+      
+      const subResult = await window.nats.subscribe(subject)
+      if (subResult.success && subResult.subscriptionId) {
+        subscriptionIdRef.current = subResult.subscriptionId
+        setSubscriptionStatus('subscribed')
+        setDecoderStatus('ready')
+        message.success(`已订阅 ${subject}`)
+      } else {
+        await window.nats.stopVideoStream(subject)
+        setSubscriptionStatus('error')
+        setDecoderStatus('error')
+        message.error(`订阅失败: ${subResult.error || '未知错误'}`)
+      }
+    } catch (e) {
       setSubscriptionStatus('error')
-      message.error(result.error || '解码器初始化失败')
+      setDecoderStatus('error')
+      message.error(`启动失败: ${e}`)
     }
   }, [stopStream])
 
@@ -301,47 +135,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     const handleMessage = (data: { subscriptionId: string; message: { payload: string; subject: string } }) => {
       if (!subscriptionIdRef.current) return
       if (data.subscriptionId !== subscriptionIdRef.current) return
-      if (!decoderRef.current) return
-
-      setReceivedFrames(prev => prev + 1)
-
-      try {
-        let frameData: ArrayBuffer
-        
-        if (typeof data.message.payload === 'string') {
-          try {
-            const binary = atob(data.message.payload)
-            frameData = new ArrayBuffer(binary.length)
-            new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
-          } catch (atobError) {
-            const textData = data.message.payload
-            if (textData.startsWith('data:')) {
-              const base64 = textData.split(',')[1]
-              const binary = atob(base64)
-              frameData = new ArrayBuffer(binary.length)
-              new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
-            } else {
-              const bytes = new Uint8Array(textData.length)
-              for (let i = 0; i < textData.length; i++) {
-                bytes[i] = textData.charCodeAt(i) & 0xFF
-              }
-              frameData = bytes.buffer
-            }
-          }
-        } else {
-          frameData = new TextEncoder().encode(String(data.message.payload)).buffer
-        }
-
-        const result = decoderRef.current.decode(frameData)
-        if (!result.success && result.error) {
-          setDecodeErrors(prev => {
-            const newErrors = [...prev, result.error!]
-            return newErrors.slice(-5)
-          })
-        }
-      } catch (e) {
-        console.error('Frame handling error:', e)
-      }
+      
+      window.nats.feedVideoData(data.message.subject, data.message.payload)
     }
 
     const unsubscribe = window.nats.onMessage(handleMessage)
@@ -350,11 +145,60 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     }
   }, [])
 
+  useEffect(() => {
+    const handleFrame = (data: { subject: string; data: string; width: number; height: number; timestamp: number }) => {
+      if (data.subject !== activeStream) return
+      if (!canvasRef.current) return
+
+      const ctx = canvasRef.current.getContext('2d')
+      if (!ctx) return
+
+      setReceivedFrames(prev => prev + 1)
+      
+      const now = performance.now()
+      const elapsed = now - lastFrameTime
+      setLastFrameTime(now)
+      
+      if (elapsed > 0 && elapsed < 1000) {
+        setStats(prev => ({
+          fps: Math.round(1000 / elapsed),
+          frameCount: prev.frameCount + 1,
+          latency: Math.round(elapsed)
+        }))
+      }
+
+      if (canvasRef.current.width !== data.width || canvasRef.current.height !== data.height) {
+        canvasRef.current.width = data.width
+        canvasRef.current.height = data.height
+      }
+
+      try {
+        const binary = atob(data.data)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i)
+        }
+
+        const imageData = new ImageData(new Uint8ClampedArray(bytes), data.width, data.height)
+        ctx.putImageData(imageData, 0, 0)
+        
+        if (decoderStatus !== 'decoding') {
+          setDecoderStatus('decoding')
+        }
+      } catch (e) {
+        console.error('Frame render error:', e)
+      }
+    }
+
+    const unsubscribe = window.nats.onVideoFrame(handleFrame)
+    return () => {
+      unsubscribe?.()
+    }
+  }, [activeStream, lastFrameTime, decoderStatus])
+
   const handleReset = useCallback(() => {
-    decoderRef.current?.reset()
     setStats({ fps: 0, frameCount: 0, latency: 0 })
     setReceivedFrames(0)
-    setDecodeErrors([])
   }, [])
 
   const getStatusTag = () => {
@@ -376,10 +220,19 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {ffmpegAvailable === false && (
+        <Alert 
+          type="error" 
+          message="FFmpeg 不可用" 
+          description="请确保已安装 FFmpeg 或 @ffmpeg-installer/ffmpeg 包"
+          showIcon
+        />
+      )}
+
       <Alert 
         type="info" 
-        message="使用 Broadway.js 解码器" 
-        description="纯 JavaScript H.264 解码器，对视频流格式要求更宽松，无需关键帧即可解码"
+        message="使用 FFmpeg 解码" 
+        description="在 Electron 主进程中使用 FFmpeg 解码 H.264 视频流，支持任意格式的视频流"
         showIcon
       />
 
@@ -420,14 +273,14 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   if (activeStream === stream.subject) {
                     stopStream()
                   } else {
-                    startStream(stream.subject)
+                    startStream(stream.subject, stream.width || 640, stream.height || 480)
                   }
                 }}
               >
                 <Space>
                   <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
                   <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
-                  <Tag>{(stream.codec || 'auto').toUpperCase()}</Tag>
+                  <Tag>{stream.width}x{stream.height}</Tag>
                 </Space>
                 <Space>
                   {activeStream === stream.subject && subscriptionStatus === 'subscribed' && (
@@ -487,7 +340,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               <div>
                 <Text style={{ color: '#fff', opacity: 0.5 }}>
                   {decoderStatus === 'idle' && '选择视频流开始播放'}
-                  {decoderStatus === 'initializing' && '初始化解码器...'}
+                  {decoderStatus === 'initializing' && '初始化 FFmpeg...'}
                   {decoderStatus === 'ready' && '等待视频数据...'}
                   {decoderStatus === 'error' && '解码器错误'}
                 </Text>
@@ -495,14 +348,6 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
             </div>
           )}
         </div>
-
-        {decodeErrors.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <Text type="danger" style={{ fontSize: 12 }}>
-              最近解码错误: {decodeErrors[decodeErrors.length - 1]}
-            </Text>
-          </div>
-        )}
       </Card>
 
       <Modal
@@ -521,12 +366,23 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               onChange={(e) => setNewSubject(e.target.value)}
             />
           </Form.Item>
-          <Form.Item label="编码格式">
-            <Select 
-              value={newCodec} 
-              onChange={setNewCodec}
-              options={CODEC_OPTIONS}
-            />
+          <Form.Item label="分辨率">
+            <Space>
+              <Input 
+                type="number" 
+                style={{ width: 100 }} 
+                value={newWidth}
+                onChange={(e) => setNewWidth(parseInt(e.target.value) || 640)}
+                addonBefore="宽"
+              />
+              <Input 
+                type="number" 
+                style={{ width: 100 }} 
+                value={newHeight}
+                onChange={(e) => setNewHeight(parseInt(e.target.value) || 480)}
+                addonBefore="高"
+              />
+            </Space>
           </Form.Item>
         </Form>
       </Modal>
@@ -537,8 +393,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
 const videoPlayerPlugin: NatsClientPlugin = {
   id: 'com.natsclient.video-player',
   name: 'Video Player',
-  version: '2.1.0',
-  description: '视频流播放器，使用 Broadway.js 解码 H.264',
+  version: '3.0.0',
+  description: '视频流播放器，使用 FFmpeg 解码 H.264',
   author: 'NatsClient Team',
   
   capabilities: {
