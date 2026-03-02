@@ -385,5 +385,61 @@
       "confirmUninstall": "确认卸载",
       "confirmUninstallDesc": "确定要卸载此插件吗？"
     }
+  },
+  "videoPlayer": {
+    "title": "视频播放器",
+    "streamList": "视频流列表",
+    "addStream": "添加视频流",
+    "noStreams": "暂无视频流，点击上方按钮添加",
+    "player": "播放器",
+    "resolution": "分辨率",
+    "resolutionPreset": "分辨率预设",
+    "customResolution": "自定义分辨率",
+    "width": "宽",
+    "height": "高",
+    "mode": "模式",
+    "autoDetect": "自动检测",
+    "autoDetectDesc": "自动检测视频分辨率（实验性，可能不稳定）",
+    "manualMode": "使用指定分辨率（推荐）",
+    "subject": "主题",
+    "subjectPlaceholder": "例如: camera.front.door",
+    "subjectRequired": "请输入主题",
+    "addSuccess": "已添加视频流",
+    "status": {
+      "idle": "空闲",
+      "initializing": "初始化中",
+      "ready": "等待数据",
+      "decoding": "解码中",
+      "error": "错误"
+    },
+    "subscription": {
+      "none": "未订阅",
+      "subscribing": "订阅中",
+      "subscribed": "已订阅",
+      "error": "订阅错误"
+    },
+    "stats": {
+      "received": "接收",
+      "fps": "FPS",
+      "latency": "延迟"
+    },
+    "placeholder": {
+      "idle": "选择视频流开始播放",
+      "initializing": "初始化 FFmpeg...",
+      "ready": "等待视频数据...",
+      "error": "解码器错误"
+    },
+    "detectedResolution": "检测到的原始分辨率",
+    "originalResolution": "原始视频分辨率",
+    "scaledTo": "缩放到",
+    "ffmpegNotAvailable": "FFmpeg 不可用",
+    "ffmpegNotAvailableDesc": "请确保已安装 FFmpeg 或 @ffmpeg-installer/ffmpeg 包",
+    "usingFfmpeg": "使用 FFmpeg 解码",
+    "usingFfmpegDesc": "在 Electron 主进程中使用 FFmpeg 解码 H.264 视频流，支持任意格式的视频流",
+    "playing": "播放中",
+    "reset": "重置",
+    "delete": "删除",
+    "cancel": "取消",
+    "confirm": "确定"
   }
 }

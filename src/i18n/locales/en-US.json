@@ -385,5 +385,61 @@
       "confirmUninstall": "Confirm Uninstall",
       "confirmUninstallDesc": "Are you sure you want to uninstall this plugin?"
     }
+  },
+  "videoPlayer": {
+    "title": "Video Player",
+    "streamList": "Stream List",
+    "addStream": "Add Stream",
+    "noStreams": "No streams, click the button above to add",
+    "player": "Player",
+    "resolution": "Resolution",
+    "resolutionPreset": "Resolution Preset",
+    "customResolution": "Custom Resolution",
+    "width": "Width",
+    "height": "Height",
+    "mode": "Mode",
+    "autoDetect": "Auto Detect",
+    "autoDetectDesc": "Auto detect video resolution (experimental, may be unstable)",
+    "manualMode": "Use specified resolution (recommended)",
+    "subject": "Subject",
+    "subjectPlaceholder": "e.g.: camera.front.door",
+    "subjectRequired": "Please enter subject",
+    "addSuccess": "Stream added",
+    "status": {
+      "idle": "Idle",
+      "initializing": "Initializing",
+      "ready": "Waiting for data",
+      "decoding": "Decoding",
+      "error": "Error"
+    },
+    "subscription": {
+      "none": "Not subscribed",
+      "subscribing": "Subscribing",
+      "subscribed": "Subscribed",
+      "error": "Subscription error"
+    },
+    "stats": {
+      "received": "Received",
+      "fps": "FPS",
+      "latency": "Latency"
+    },
+    "placeholder": {
+      "idle": "Select a stream to start playing",
+      "initializing": "Initializing FFmpeg...",
+      "ready": "Waiting for video data...",
+      "error": "Decoder error"
+    },
+    "detectedResolution": "Detected original resolution",
+    "originalResolution": "Original video resolution",
+    "scaledTo": "scaled to",
+    "ffmpegNotAvailable": "FFmpeg not available",
+    "ffmpegNotAvailableDesc": "Please ensure FFmpeg or @ffmpeg-installer/ffmpeg package is installed",
+    "usingFfmpeg": "Using FFmpeg decoder",
+    "usingFfmpegDesc": "Decode H.264 video stream using FFmpeg in Electron main process, supports any format",
+    "playing": "Playing",
+    "reset": "Reset",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirm": "OK"
   }
 }

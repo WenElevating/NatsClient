@@ -10,6 +10,7 @@ import {
   LoadingOutlined
 } from '@ant-design/icons'
 import type { NatsClientPlugin, PluginPanelProps } from '../types'
+import { useTranslation } from 'react-i18next'
 
 const { Text } = Typography
 
@@ -19,7 +20,7 @@ const RESOLUTION_PRESETS = [
   { value: '1080p', label: '1080p (1920×1080)', width: 1920, height: 1080 },
   { value: '2k', label: '2K (2560×1440)', width: 2560, height: 1440 },
   { value: '4k', label: '4K (3840×2160)', width: 3840, height: 2160 },
-  { value: 'custom', label: '自定义', width: 0, height: 0 },
+  { value: 'custom', width: 0, height: 0 },
 ]
 
 interface VideoStreamConfig {
@@ -32,6 +33,13 @@ interface VideoStreamConfig {
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
 
 const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChange }) => {
+  const { t } = useTranslation()
+  
+  const resolutionPresets = RESOLUTION_PRESETS.map(p => ({
+    ...p,
+    label: p.value === 'custom' ? t('videoPlayer.customResolution') : p.label
+  }))
+  
   const [streams, setStreams] = useState<VideoStreamConfig[]>(settings.streams || [])
   const [activeStream, setActiveStream] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -76,7 +84,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
 
   const addStream = useCallback(() => {
     if (!newSubject.trim()) {
-      message.error('请输入主题')
+      message.error(t('videoPlayer.subjectRequired'))
       return
     }
     
@@ -95,8 +103,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     setNewSubject('')
     setNewAutoResolution(false)
     setShowAddModal(false)
-    message.success('已添加视频流')
-  }, [newSubject, newAutoResolution, resolutionPreset, newCustomWidth, newCustomHeight])
+    message.success(t('videoPlayer.addSuccess'))
+  }, [newSubject, newAutoResolution, resolutionPreset, newCustomWidth, newCustomHeight, t])
 
   const removeStream = useCallback(async (subject: string) => {
     if (activeStream === subject) {
@@ -152,7 +160,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
         setFfmpegAvailable(false)
         setSubscriptionStatus('error')
         setDecoderStatus('error')
-        message.error(videoResult.error || 'FFmpeg 不可用')
+        message.error(videoResult.error || t('videoPlayer.ffmpegNotAvailable'))
         return
       }
       
@@ -163,19 +171,19 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
         subscriptionIdRef.current = subResult.subscriptionId
         setSubscriptionStatus('subscribed')
         setDecoderStatus('ready')
-        message.success(`已订阅 ${subject}`)
+        message.success(`${t('videoPlayer.subscription.subscribed')} ${subject}`)
       } else {
         await window.nats.stopVideoStream(subject)
         setSubscriptionStatus('error')
         setDecoderStatus('error')
-        message.error(`订阅失败: ${subResult.error || '未知错误'}`)
+        message.error(`${t('videoPlayer.subscription.error')}: ${subResult.error || t('common.error')}`)
       }
     } catch (e) {
       setSubscriptionStatus('error')
       setDecoderStatus('error')
-      message.error(`启动失败: ${e}`)
+      message.error(`${t('common.error')}: ${e}`)
     }
-  }, [stopStream])
+  }, [stopStream, t])
 
   useEffect(() => {
     const handleMessage = (data: { subscriptionId: string; message: { payload: string; subject: string } }) => {
@@ -274,17 +282,17 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const getStatusTag = () => {
     switch (decoderStatus) {
       case 'idle':
-        return <Tag>空闲</Tag>
+        return <Tag>{t('videoPlayer.status.idle')}</Tag>
       case 'initializing':
-        return <Tag color="processing" icon={<LoadingOutlined />}>初始化中</Tag>
+        return <Tag color="processing" icon={<LoadingOutlined />}>{t('videoPlayer.status.initializing')}</Tag>
       case 'ready':
-        return <Tag color="warning">等待数据</Tag>
+        return <Tag color="warning">{t('videoPlayer.status.ready')}</Tag>
       case 'decoding':
-        return <Tag color="success" icon={<CheckCircleOutlined />}>解码中</Tag>
+        return <Tag color="success" icon={<CheckCircleOutlined />}>{t('videoPlayer.status.decoding')}</Tag>
       case 'error':
-        return <Tag color="error" icon={<CloseCircleOutlined />}>错误</Tag>
+        return <Tag color="error" icon={<CloseCircleOutlined />}>{t('videoPlayer.status.error')}</Tag>
       default:
-        return <Tag>未知</Tag>
+        return <Tag>{t('common.error')}</Tag>
     }
   }
 
@@ -293,21 +301,21 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       {ffmpegAvailable === false && (
         <Alert 
           type="error" 
-          message="FFmpeg 不可用" 
-          description="请确保已安装 FFmpeg 或 @ffmpeg-installer/ffmpeg 包"
+          message={t('videoPlayer.ffmpegNotAvailable')} 
+          description={t('videoPlayer.ffmpegNotAvailableDesc')}
           showIcon
         />
       )}
 
       <Alert 
         type="info" 
-        message="使用 FFmpeg 解码" 
-        description="在 Electron 主进程中使用 FFmpeg 解码 H.264 视频流，支持任意格式的视频流"
+        message={t('videoPlayer.usingFfmpeg')} 
+        description={t('videoPlayer.usingFfmpegDesc')}
         showIcon
       />
 
       <Card 
-        title="视频流列表" 
+        title={t('videoPlayer.streamList')}
         size="small"
         extra={
           <Button 
@@ -316,13 +324,13 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
             size="small"
             onClick={() => setShowAddModal(true)}
           >
-            添加视频流
+            {t('videoPlayer.addStream')}
           </Button>
         }
       >
         {streams.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 20 }}>
-            <Text type="secondary">暂无视频流，点击上方按钮添加</Text>
+            <Text type="secondary">{t('videoPlayer.noStreams')}</Text>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -355,14 +363,14 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
                   <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
                   {stream.autoResolution ? (
-                    <Tag color="purple">自动</Tag>
+                    <Tag color="purple">{t('videoPlayer.autoDetect')}</Tag>
                   ) : (
                     <Tag color="blue">{stream.customWidth}x{stream.customHeight}</Tag>
                   )}
                 </Space>
                 <Space>
                   {activeStream === stream.subject && subscriptionStatus === 'subscribed' && (
-                    <Tag color="green">播放中</Tag>
+                    <Tag color="green">{t('videoPlayer.playing')}</Tag>
                   )}
                   <Button 
                     type="text" 
@@ -384,10 +392,10 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       <Card 
         title={
           <Space>
-            <Text>播放器</Text>
+            <Text>{t('videoPlayer.player')}</Text>
             {activeStream && <Tag color="blue">{activeStream}</Tag>}
             {detectedResolution ? (
-              <Tooltip title="检测到的原始分辨率">
+              <Tooltip title={t('videoPlayer.detectedResolution')}>
                 <Tag color="orange">{detectedResolution.width}x{detectedResolution.height}</Tag>
               </Tooltip>
             ) : null}
@@ -402,10 +410,10 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
         extra={
           <Space>
             {getStatusTag()}
-            <Tag color="cyan">接收: {receivedFrames}</Tag>
-            <Tag color="green">{stats.fps} FPS</Tag>
-            <Tag color="blue">{stats.latency}ms</Tag>
-            <Tooltip title="重置">
+            <Tag color="cyan">{t('videoPlayer.stats.received')}: {receivedFrames}</Tag>
+            <Tag color="green">{stats.fps} {t('videoPlayer.stats.fps')}</Tag>
+            <Tag color="blue">{stats.latency}{t('videoPlayer.stats.latency')}</Tag>
+            <Tooltip title={t('videoPlayer.reset')}>
               <Button type="text" icon={<ReloadOutlined />} onClick={handleReset} />
             </Tooltip>
           </Space>
@@ -442,10 +450,10 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               <PlayCircleOutlined style={{ fontSize: 48, color: '#fff', opacity: 0.5 }} />
               <div>
                 <Text style={{ color: '#fff', opacity: 0.5 }}>
-                  {decoderStatus === 'idle' && '选择视频流开始播放'}
-                  {decoderStatus === 'initializing' && '初始化 FFmpeg...'}
-                  {decoderStatus === 'ready' && '等待视频数据...'}
-                  {decoderStatus === 'error' && '解码器错误'}
+                  {decoderStatus === 'idle' && t('videoPlayer.placeholder.idle')}
+                  {decoderStatus === 'initializing' && t('videoPlayer.placeholder.initializing')}
+                  {decoderStatus === 'ready' && t('videoPlayer.placeholder.ready')}
+                  {decoderStatus === 'error' && t('videoPlayer.placeholder.error')}
                 </Text>
               </div>
             </div>
@@ -454,22 +462,22 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       </Card>
 
       <Modal
-        title="添加视频流"
+        title={t('videoPlayer.addStream')}
         open={showAddModal}
         onOk={addStream}
         onCancel={() => setShowAddModal(false)}
-        okText="添加"
-        cancelText="取消"
+        okText={t('videoPlayer.confirm')}
+        cancelText={t('videoPlayer.cancel')}
       >
         <Form layout="vertical">
-          <Form.Item label="主题 (Subject)" required>
+          <Form.Item label={t('videoPlayer.subject')} required>
             <Input 
-              placeholder="例如: camera.front.door" 
+              placeholder={t('videoPlayer.subjectPlaceholder')} 
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
             />
           </Form.Item>
-          <Form.Item label="分辨率">
+          <Form.Item label={t('videoPlayer.resolution')}>
             <Select
               value={resolutionPreset}
               onChange={(value) => {
@@ -480,31 +488,31 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   setNewCustomHeight(preset.height)
                 }
               }}
-              options={RESOLUTION_PRESETS.map(p => ({ value: p.value, label: p.label }))}
+              options={resolutionPresets.map(p => ({ value: p.value, label: p.label }))}
               style={{ width: '100%' }}
             />
           </Form.Item>
           {resolutionPreset === 'custom' && (
-            <Form.Item label="自定义分辨率">
+            <Form.Item label={t('videoPlayer.customResolution')}>
               <Space>
                 <Input 
                   type="number" 
                   style={{ width: 100 }} 
                   value={newCustomWidth}
                   onChange={(e) => setNewCustomWidth(parseInt(e.target.value) || 1920)}
-                  addonBefore="宽"
+                  addonBefore={t('videoPlayer.width')}
                 />
                 <Input 
                   type="number" 
                   style={{ width: 100 }} 
                   value={newCustomHeight}
                   onChange={(e) => setNewCustomHeight(parseInt(e.target.value) || 1080)}
-                  addonBefore="高"
+                  addonBefore={t('videoPlayer.height')}
                 />
               </Space>
             </Form.Item>
           )}
-          <Form.Item label="模式">
+          <Form.Item label={t('videoPlayer.mode')}>
             <Space direction="vertical">
               <Switch 
                 checked={newAutoResolution}
@@ -512,8 +520,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               />
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {newAutoResolution 
-                  ? '自动检测视频分辨率（实验性，可能不稳定）' 
-                  : '使用指定分辨率（推荐）'}
+                  ? t('videoPlayer.autoDetectDesc')
+                  : t('videoPlayer.manualMode')}
               </Text>
             </Space>
           </Form.Item>

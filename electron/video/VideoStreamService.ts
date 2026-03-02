@@ -404,7 +404,7 @@ class VideoStreamService {
       frameCount++
     }
     
-    if (combined.length > 0) {
+    if (combined.length > 0 && this.frameCount % 60 === 0) {
       console.log(`Buffering ${combined.length} bytes, need ${expectedSize} for a complete frame`)
     }
     
