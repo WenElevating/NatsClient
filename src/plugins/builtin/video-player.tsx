@@ -44,15 +44,14 @@ class BroadwayDecoder {
   private status: DecoderStatus = 'idle'
   private width = 640
   private height = 480
+  private BroadwayClass: any = null
 
-  constructor() {
-    this.initBroadway()
-  }
-
-  private initBroadway() {
+  async initBroadway(): Promise<boolean> {
     try {
-      const Broadway = require('broadway-player')
-      this.decoder = new Broadway({
+      const module = await import('broadway-player')
+      this.BroadwayClass = module.default || module
+      
+      this.decoder = new this.BroadwayClass({
         useWorker: false,
         webgl: 'auto',
         size: { width: this.width, height: this.height }
@@ -66,8 +65,11 @@ class BroadwayDecoder {
         console.error('Broadway error:', error)
         this.setStatus('error')
       })
+      
+      return true
     } catch (e) {
       console.error('Failed to init Broadway:', e)
+      return false
     }
   }
 
@@ -98,6 +100,12 @@ class BroadwayDecoder {
     if (!this.ctx) {
       this.setStatus('error')
       return { success: false, error: 'Canvas 2D 上下文初始化失败' }
+    }
+
+    const broadwayOk = await this.initBroadway()
+    if (!broadwayOk) {
+      this.setStatus('error')
+      return { success: false, error: 'Broadway 解码器初始化失败' }
     }
 
     this.setStatus('ready')
@@ -301,9 +309,25 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
         let frameData: ArrayBuffer
         
         if (typeof data.message.payload === 'string') {
-          const binary = atob(data.message.payload)
-          frameData = new ArrayBuffer(binary.length)
-          new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
+          try {
+            const binary = atob(data.message.payload)
+            frameData = new ArrayBuffer(binary.length)
+            new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
+          } catch (atobError) {
+            const textData = data.message.payload
+            if (textData.startsWith('data:')) {
+              const base64 = textData.split(',')[1]
+              const binary = atob(base64)
+              frameData = new ArrayBuffer(binary.length)
+              new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
+            } else {
+              const bytes = new Uint8Array(textData.length)
+              for (let i = 0; i < textData.length; i++) {
+                bytes[i] = textData.charCodeAt(i) & 0xFF
+              }
+              frameData = bytes.buffer
+            }
+          }
         } else {
           frameData = new TextEncoder().encode(String(data.message.payload)).buffer
         }

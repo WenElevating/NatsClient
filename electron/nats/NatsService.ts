@@ -699,12 +699,27 @@ export class NatsService extends EventEmitter {
   }
 
   private isBinaryData(data: Uint8Array): boolean {
+    if (data.length === 0) return false
+    
     for (let i = 0; i < Math.min(data.length, 512); i++) {
       const byte = data[i]
-      if (byte === 0 || (byte >= 0x80 && byte <= 0x9F)) {
+      if (byte === 0) {
+        return true
+      }
+      if (byte >= 0x80) {
         return true
       }
     }
+    
+    const h264StartCode = (i: number) => 
+      data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1
+    
+    for (let i = 0; i < Math.min(data.length - 4, 100); i++) {
+      if (h264StartCode(i)) {
+        return true
+      }
+    }
+    
     return false
   }
 
