@@ -105,6 +105,7 @@ class VideoStreamService {
 
     ffmpeg.stdin.on('error', (err) => {
       console.error('FFmpeg stdin error:', err)
+      this.stopStream(subject)
     })
 
     ffmpeg.stdout.on('data', (data: Buffer) => {
@@ -112,7 +113,11 @@ class VideoStreamService {
     })
 
     ffmpeg.stderr.on('data', (data) => {
-      console.log('FFmpeg stderr:', data.toString())
+      const msg = data.toString()
+      if (msg.includes('frame=') || msg.includes('fps=')) {
+        return
+      }
+      console.log('FFmpeg stderr:', msg)
     })
 
     ffmpeg.on('close', (code) => {
@@ -120,10 +125,12 @@ class VideoStreamService {
       this.processes.delete(subject)
       this.frameBuffers.delete(subject)
       this.expectedFrameSize.delete(subject)
+      this.callbacks.delete(subject)
     })
 
     ffmpeg.on('error', (err) => {
       console.error('FFmpeg process error:', err)
+      this.stopStream(subject)
     })
 
     return { success: true }
@@ -161,7 +168,12 @@ class VideoStreamService {
 
   feedData(subject: string, data: Buffer): boolean {
     const process = this.processes.get(subject)
-    if (!process || !process.stdin || !process.stdin.writable) {
+    if (!process) {
+      return false
+    }
+    
+    if (!process.stdin || !process.stdin.writable || process.stdin.destroyed) {
+      this.stopStream(subject)
       return false
     }
 
@@ -170,6 +182,7 @@ class VideoStreamService {
       return true
     } catch (e) {
       console.error('Failed to write to ffmpeg stdin:', e)
+      this.stopStream(subject)
       return false
     }
   }
