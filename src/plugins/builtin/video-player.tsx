@@ -179,7 +179,21 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           bytes[i] = binary.charCodeAt(i)
         }
 
-        const imageData = new ImageData(new Uint8ClampedArray(bytes), data.width, data.height)
+        const expectedSize = data.width * data.height * 3
+        if (bytes.length !== expectedSize) {
+          console.warn(`Frame size mismatch: expected ${expectedSize}, got ${bytes.length}`)
+          return
+        }
+
+        const rgba = new Uint8ClampedArray(data.width * data.height * 4)
+        for (let i = 0; i < data.width * data.height; i++) {
+          rgba[i * 4] = bytes[i * 3]
+          rgba[i * 4 + 1] = bytes[i * 3 + 1]
+          rgba[i * 4 + 2] = bytes[i * 3 + 2]
+          rgba[i * 4 + 3] = 255
+        }
+
+        const imageData = new ImageData(rgba, data.width, data.height)
         ctx.putImageData(imageData, 0, 0)
         
         if (decoderStatus !== 'decoding') {
