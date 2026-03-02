@@ -17,8 +17,10 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
     "antd": "^6.3.1",
+    "broadway-player": "^0.1.1",
     "i18next": "^25.8.13",
     "i18next-browser-languagedetector": "^8.2.1",
+    "jsmpeg": "^1.0.0",
     "nats": "^2.29.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
