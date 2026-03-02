@@ -274,6 +274,8 @@ class VideoStreamService {
     ffmpeg.stdout.on('data', (data: Buffer) => {
       if (!dimensionDetected) {
         console.log('First frame bytes length:', data.length)
+        console.log('Expected 4K frame size:', 3840 * 2160 * 4, 'bytes')
+        console.log('Expected 1080p frame size:', 1920 * 1080 * 4, 'bytes')
         
         const commonResolutions = [
           { w: 3840, h: 2160 },
@@ -346,6 +348,7 @@ class VideoStreamService {
   private handleFrameData(subject: string, data: Buffer) {
     const dims = this.frameDimensions.get(subject)
     if (!dims) {
+      console.log('handleFrameData: No dimensions for', subject)
       return
     }
     
@@ -357,6 +360,7 @@ class VideoStreamService {
     
     let combined = Buffer.concat(buffers)
     
+    let frameCount = 0
     while (combined.length >= expectedSize) {
       const frameData = combined.subarray(0, expectedSize)
       combined = combined.subarray(expectedSize)
@@ -375,23 +379,36 @@ class VideoStreamService {
         callbacks.forEach(cb => cb(frame))
       }
       this.frameCount++
+      frameCount++
+    }
+    
+    if (combined.length > 0) {
+      console.log(`Buffering ${combined.length} bytes, need ${expectedSize} for a complete frame`)
     }
     
     this.frameBuffers.set(subject, combined.length > 0 ? [combined] : [])
   }
 
+  private dataReceived = 0
+
   feedData(subject: string, data: Buffer): boolean {
     const process = this.processes.get(subject)
     if (!process) {
+      console.log('feedData: No process for', subject)
       return false
     }
     
     if (!process.stdin || !process.stdin.writable || process.stdin.destroyed) {
+      console.log('feedData: stdin not writable for', subject)
       this.stopStream(subject)
       return false
     }
 
     try {
+      this.dataReceived += data.length
+      if (this.frameCount % 30 === 0) {
+        console.log(`Stats: received ${(this.dataReceived / 1024 / 1024).toFixed(2)} MB, decoded ${this.frameCount} frames`)
+      }
       process.stdin.write(data)
       return true
     } catch (e) {
