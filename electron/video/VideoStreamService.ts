@@ -89,10 +89,13 @@ class VideoStreamService {
 
     const args = [
       '-f', 'h264',
+      '-fflags', 'nobuffer',
+      '-flags', 'low_delay',
       '-i', 'pipe:0',
-      '-vf', 'scale=iw:ih',
+      '-vf', 'scale=iw:ih:flags=fast_bilinear',
       '-f', 'rawvideo',
-      '-pix_fmt', 'rgb24',
+      '-pix_fmt', 'rgba',
+      '-color_range', 'pc',
       'pipe:1'
     ]
 
@@ -112,7 +115,7 @@ class VideoStreamService {
 
     ffmpeg.stderr.on('data', (data) => {
       const msg = data.toString()
-      if (msg.includes('frame=') || msg.includes('fps=')) {
+      if (msg.includes('frame=') || msg.includes('fps=') || msg.includes('deprecated pixel format')) {
         return
       }
       
@@ -122,7 +125,7 @@ class VideoStreamService {
         const height = parseInt(dimMatch[2])
         if (width > 0 && height > 0) {
           this.frameDimensions.set(subject, { width, height })
-          this.expectedFrameSize.set(subject, width * height * 3)
+          this.expectedFrameSize.set(subject, width * height * 4)
           console.log(`Detected video dimensions: ${width}x${height}`)
         }
       }
@@ -156,7 +159,7 @@ class VideoStreamService {
     }
     
     const { width, height } = dims
-    const expectedSize = width * height * 3
+    const expectedSize = width * height * 4
     
     const buffers = this.frameBuffers.get(subject) || []
     buffers.push(data)
