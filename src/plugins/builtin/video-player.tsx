@@ -598,13 +598,9 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
         let frameData: ArrayBuffer
         
         if (typeof data.message.payload === 'string') {
-          try {
-            const binary = atob(data.message.payload)
-            frameData = new ArrayBuffer(binary.length)
-            new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
-          } catch {
-            frameData = new TextEncoder().encode(data.message.payload).buffer
-          }
+          const binary = atob(data.message.payload)
+          frameData = new ArrayBuffer(binary.length)
+          new Uint8Array(frameData).set(Array.from(binary, c => c.charCodeAt(0)))
         } else {
           frameData = new TextEncoder().encode(String(data.message.payload)).buffer
         }

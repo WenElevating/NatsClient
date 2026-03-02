@@ -691,7 +691,21 @@ export class NatsService extends EventEmitter {
   }
 
   private decodePayload(data: Uint8Array): string {
+    const isBinary = this.isBinaryData(data)
+    if (isBinary) {
+      return Buffer.from(data).toString('base64')
+    }
     return new TextDecoder().decode(data)
+  }
+
+  private isBinaryData(data: Uint8Array): boolean {
+    for (let i = 0; i < Math.min(data.length, 512); i++) {
+      const byte = data[i]
+      if (byte === 0 || (byte >= 0x80 && byte <= 0x9F)) {
+        return true
+      }
+    }
+    return false
   }
 
   private isJsonPayload(data: Uint8Array): boolean {
