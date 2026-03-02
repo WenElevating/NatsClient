@@ -63,7 +63,6 @@ class SimpleVideoDecoder {
   private onStatsUpdate?: (stats: { fps: number; frameCount: number; latency: number }) => void
   private onStatusChange?: (status: DecoderStatus) => void
   private status: DecoderStatus = 'idle'
-  private frameBuffer: VideoFrame[] = []
   private detectedCodec: VideoCodec | null = null
   private supportInfo: CodecSupportInfo[] = []
 
@@ -193,8 +192,6 @@ class SimpleVideoDecoder {
       return
     }
 
-    this.frameBuffer.push(frame)
-    
     const canvas = this.canvas
     const width = frame.displayWidth
     const height = frame.displayHeight
@@ -204,6 +201,8 @@ class SimpleVideoDecoder {
       canvas.height = height
     }
 
+    this.ctx.drawImage(frame, 0, 0, width, height)
+    
     this.frameCount++
     this.lastFrameTime = performance.now()
     
@@ -258,7 +257,6 @@ class SimpleVideoDecoder {
     if (this.decoder) {
       this.decoder.reset()
       this.frameCount = 0
-      this.frameBuffer = []
       this.setStatus('ready')
     }
   }
@@ -271,7 +269,6 @@ class SimpleVideoDecoder {
     }
     this.ctx = null
     this.canvas = null
-    this.frameBuffer = []
     this.setStatus('idle')
   }
 }
@@ -455,12 +452,29 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     if (result.success) {
       decoderRef.current = decoder
       const detectedCodec = decoder.getDetectedCodec()
-      if (codec === 'auto' && detectedCodec) {
-        message.success(`已订阅 ${subject} (检测到 ${detectedCodec.toUpperCase()})`)
-      } else {
-        message.success(`已订阅 ${subject}`)
+      
+      try {
+        const subResult = await window.nats.subscribe(subject)
+        if (subResult.success && subResult.subscriptionId) {
+          subscriptionIdRef.current = subResult.subscriptionId
+          setSubscriptionStatus('subscribed')
+          if (codec === 'auto' && detectedCodec) {
+            message.success(`已订阅 ${subject} (检测到 ${detectedCodec.toUpperCase()})`)
+          } else {
+            message.success(`已订阅 ${subject}`)
+          }
+        } else {
+          decoder.destroy()
+          decoderRef.current = null
+          setSubscriptionStatus('error')
+          message.error(`订阅失败: ${subResult.error || '未知错误'}`)
+        }
+      } catch (e) {
+        decoder.destroy()
+        decoderRef.current = null
+        setSubscriptionStatus('error')
+        message.error(`订阅异常: ${e}`)
       }
-      setSubscriptionStatus('subscribed')
     } else {
       decoder.destroy()
       setSubscriptionStatus('error')
@@ -486,9 +500,8 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   }, [webCodecsSupported, stopStream])
 
   useEffect(() => {
-    if (!subscriptionIdRef.current) return
-
     const handleMessage = (data: { subscriptionId: string; message: { payload: string; subject: string } }) => {
+      if (!subscriptionIdRef.current) return
       if (data.subscriptionId !== subscriptionIdRef.current) return
       if (!decoderRef.current) return
 
@@ -522,7 +535,10 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
       }
     }
 
-    window.nats.onMessage(handleMessage)
+    const unsubscribe = window.nats.onMessage(handleMessage)
+    return () => {
+      unsubscribe?.()
+    }
   }, [])
 
   const handleReset = useCallback(() => {
