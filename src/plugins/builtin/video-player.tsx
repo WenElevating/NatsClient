@@ -35,13 +35,13 @@ const CODEC_OPTIONS = [
   { value: 'auto', label: '自动检测' }
 ]
 
-const CODEC_MIME: Record<VideoCodec, string> = {
-  h264: 'video/mp4; codecs="avc1.42E01E"',
-  h265: 'video/mp4; codecs="hev1.6.L120.90"',
-  vp8: 'video/webm; codecs="vp8"',
-  vp9: 'video/webm; codecs="vp09.00.10.08"',
-  av1: 'video/mp4; codecs="av01.0.01M.08"',
-  auto: 'video/mp4; codecs="avc1.42E01E"'
+const CODEC_STRINGS: Record<VideoCodec, string> = {
+  h264: 'avc1.42001E',
+  h265: 'hev1.1.6.L93.B0',
+  vp8: 'vp8',
+  vp9: 'vp09.00.10.08',
+  av1: 'av01.0.01M.08',
+  auto: 'avc1.42001E'
 }
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
@@ -132,7 +132,7 @@ class SimpleVideoDecoder {
     this.supportInfo = []
     
     for (const codec of codecsToTry) {
-      const codecString = CODEC_MIME[codec]
+      const codecString = CODEC_STRINGS[codec]
       if (!codecString) continue
       
       try {
