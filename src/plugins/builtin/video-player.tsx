@@ -67,6 +67,7 @@ class SimpleVideoDecoder {
   private supportInfo: CodecSupportInfo[] = []
   private waitingForKeyframe = true
   private codecString: string | null = null
+  private firstFrameProcessed = false
 
   constructor(config: VideoDecoderConfig) {
     this.config = config
@@ -251,6 +252,7 @@ class SimpleVideoDecoder {
           })
           
           this.waitingForKeyframe = true
+          this.firstFrameProcessed = false
         } else {
           return { success: false, error: '解码器未初始化' }
         }
@@ -258,13 +260,22 @@ class SimpleVideoDecoder {
       
       const chunk = new Uint8Array(data)
       
-      const isKeyFrame = this.detectKeyFrame(chunk)
+      let isKeyFrame = this.detectKeyFrame(chunk)
       
-      if (this.waitingForKeyframe && !isKeyFrame) {
-        return { success: false, error: '等待关键帧...' }
+      if (this.waitingForKeyframe && !this.firstFrameProcessed) {
+        if (!isKeyFrame) {
+          console.log('First frame not detected as keyframe, trying as keyframe anyway...')
+          isKeyFrame = true
+        }
+        this.firstFrameProcessed = true
       }
       
-      if (isKeyFrame) {
+      if (this.waitingForKeyframe) {
+        if (!isKeyFrame) {
+          console.log('Skipping non-keyframe, waiting for keyframe...')
+          return { success: false, error: '等待关键帧...' }
+        }
+        console.log('Received keyframe, starting decode...')
         this.waitingForKeyframe = false
       }
       
@@ -278,25 +289,43 @@ class SimpleVideoDecoder {
       return { success: true }
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e)
+      console.error('Decode error:', errorMsg)
       return { success: false, error: errorMsg }
     }
   }
 
   private detectKeyFrame(data: Uint8Array): boolean {
-    for (let i = 0; i < data.length - 4; i++) {
-      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0 && data[i + 3] === 1) {
-        const nalType = data[i + 4] & 0x1F
-        if (nalType === 5 || nalType === 7 || nalType === 8) {
-          return true
+    if (data.length < 5) return false
+    
+    for (let i = 0; i < Math.min(data.length - 4, 100); i++) {
+      if (data[i] === 0 && data[i + 1] === 0) {
+        let nalType: number
+        let offset: number
+        
+        if (data[i + 2] === 0 && data[i + 3] === 1) {
+          nalType = data[i + 4] & 0x1F
+          offset = 4
+        } else if (data[i + 2] === 1) {
+          nalType = data[i + 3] & 0x1F
+          offset = 3
+        } else {
+          continue
         }
-      }
-      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) {
-        const nalType = data[i + 3] & 0x1F
+        
+        console.log(`NAL unit at ${i}: type=${nalType} (offset=${offset})`)
+        
         if (nalType === 5 || nalType === 7 || nalType === 8) {
+          console.log(`Key frame detected: NAL type ${nalType}`)
           return true
         }
       }
     }
+    
+    const header = Array.from(data.slice(0, 20))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join(' ')
+    console.log(`No key frame detected. Data header: ${header}`)
+    
     return false
   }
 
