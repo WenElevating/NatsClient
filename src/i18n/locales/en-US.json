@@ -9,7 +9,7 @@
     "unknownError": "Unknown error"
   },
   "app": {
-    "title": "NATS Client",
+    "title": "NatsClient",
     "connected": "Connected",
     "connecting": "Connecting",
     "reconnecting": "Reconnecting",

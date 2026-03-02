@@ -9,7 +9,7 @@
     "unknownError": "未知错误"
   },
   "app": {
-    "title": "NATS Client",
+    "title": "NatsClient",
     "connected": "已连接",
     "connecting": "连接中",
     "reconnecting": "重连中",
