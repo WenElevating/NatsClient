@@ -1,5 +1,11 @@
 import { spawn, ChildProcess } from 'child_process'
 import * as fs from 'fs'
+import * as path from 'path'
+import { app } from 'electron'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 export interface VideoStreamOptions {
   subject: string
@@ -30,17 +36,38 @@ class VideoStreamService {
   }
 
   private initFfmpeg() {
-    try {
-      const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg')
-      this.ffmpegPath = ffmpegInstaller.path
-      console.log('FFmpeg path:', this.ffmpegPath)
-      
-      if (this.ffmpegPath && !fs.existsSync(this.ffmpegPath)) {
-        console.error('FFmpeg binary not found at:', this.ffmpegPath)
-        this.ffmpegPath = null
+    const platform = process.platform + '-' + process.arch
+    const binaryName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
+    
+    const possiblePaths = [
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', platform, binaryName),
+      path.join(__dirname, '..', '..', '..', '@ffmpeg-installer', platform, binaryName),
+      path.join(app.getAppPath(), 'node_modules', '@ffmpeg-installer', platform, binaryName),
+    ]
+    
+    for (const ffmpegPath of possiblePaths) {
+      if (fs.existsSync(ffmpegPath)) {
+        this.ffmpegPath = ffmpegPath
+        console.log('FFmpeg found at:', ffmpegPath)
+        return
       }
-    } catch (e) {
-      console.error('Failed to load ffmpeg-installer:', e)
+    }
+    
+    console.log('FFmpeg not found in node_modules, checking system PATH...')
+    
+    try {
+      const result = spawn('ffmpeg', ['-version'])
+      result.on('close', (code) => {
+        if (code === 0) {
+          this.ffmpegPath = 'ffmpeg'
+          console.log('Using system FFmpeg')
+        }
+      })
+      result.on('error', () => {
+        console.error('FFmpeg not found in system PATH')
+      })
+    } catch {
+      console.error('FFmpeg not found')
     }
   }
 
