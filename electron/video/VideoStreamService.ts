@@ -9,8 +9,6 @@ const __dirname = path.dirname(__filename)
 
 export interface VideoStreamOptions {
   subject: string
-  width?: number
-  height?: number
 }
 
 export interface VideoFrame {
@@ -30,6 +28,7 @@ class VideoStreamService {
   private callbacks: Map<string, Set<FrameCallback>> = new Map()
   private frameBuffers: Map<string, Buffer[]> = new Map()
   private expectedFrameSize: Map<string, number> = new Map()
+  private frameDimensions: Map<string, { width: number; height: number }> = new Map()
 
   constructor() {
     this.initFfmpeg()
@@ -80,19 +79,18 @@ class VideoStreamService {
       return { success: false, error: 'FFmpeg 不可用' }
     }
 
-    const { subject, width = 640, height = 480 } = options
+    const { subject } = options
 
     if (this.processes.has(subject)) {
       return { success: false, error: '该视频流已在处理中' }
     }
 
     this.frameBuffers.set(subject, [])
-    this.expectedFrameSize.set(subject, width * height * 3)
 
     const args = [
       '-f', 'h264',
       '-i', 'pipe:0',
-      '-vf', `scale=${width}:${height}`,
+      '-vf', 'scale=iw:ih',
       '-f', 'rawvideo',
       '-pix_fmt', 'rgb24',
       'pipe:1'
@@ -109,7 +107,7 @@ class VideoStreamService {
     })
 
     ffmpeg.stdout.on('data', (data: Buffer) => {
-      this.handleFrameData(subject, data, width, height)
+      this.handleFrameData(subject, data)
     })
 
     ffmpeg.stderr.on('data', (data) => {
@@ -117,7 +115,21 @@ class VideoStreamService {
       if (msg.includes('frame=') || msg.includes('fps=')) {
         return
       }
-      console.log('FFmpeg stderr:', msg)
+      
+      const dimMatch = msg.match(/(\d+)x(\d+)/)
+      if (dimMatch) {
+        const width = parseInt(dimMatch[1])
+        const height = parseInt(dimMatch[2])
+        if (width > 0 && height > 0) {
+          this.frameDimensions.set(subject, { width, height })
+          this.expectedFrameSize.set(subject, width * height * 3)
+          console.log(`Detected video dimensions: ${width}x${height}`)
+        }
+      }
+      
+      if (!msg.includes('Input') && !msg.includes('Output') && !msg.includes('Stream')) {
+        console.log('FFmpeg stderr:', msg)
+      }
     })
 
     ffmpeg.on('close', (code) => {
@@ -126,6 +138,7 @@ class VideoStreamService {
       this.frameBuffers.delete(subject)
       this.expectedFrameSize.delete(subject)
       this.callbacks.delete(subject)
+      this.frameDimensions.delete(subject)
     })
 
     ffmpeg.on('error', (err) => {
@@ -136,11 +149,17 @@ class VideoStreamService {
     return { success: true }
   }
 
-  private handleFrameData(subject: string, data: Buffer, width: number, height: number) {
+  private handleFrameData(subject: string, data: Buffer) {
+    const dims = this.frameDimensions.get(subject)
+    if (!dims) {
+      return
+    }
+    
+    const { width, height } = dims
+    const expectedSize = width * height * 3
+    
     const buffers = this.frameBuffers.get(subject) || []
     buffers.push(data)
-    
-    const expectedSize = this.expectedFrameSize.get(subject) || (width * height * 3)
     
     let combined = Buffer.concat(buffers)
     

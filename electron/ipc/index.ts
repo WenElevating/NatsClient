@@ -316,17 +316,13 @@ export function setupIpcHandlers(mainWindow: Electron.BrowserWindow): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.VIDEO_START_STREAM, async (_event, subject: string, options?: { width?: number; height?: number; fps?: number }) => {
+  ipcMain.handle(IPC_CHANNELS.VIDEO_START_STREAM, async (_event, subject: string) => {
     try {
       if (!videoStreamService.isAvailable()) {
         return { success: false, error: 'FFmpeg 不可用' }
       }
       
-      const result = await videoStreamService.startStream({
-        subject,
-        width: options?.width || 640,
-        height: options?.height || 480
-      })
+      const result = await videoStreamService.startStream({ subject })
       
       if (result.success) {
         videoStreamService.onFrame(subject, (frame) => {

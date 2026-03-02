@@ -15,8 +15,6 @@ const { Text } = Typography
 
 interface VideoStreamConfig {
   subject: string
-  width?: number
-  height?: number
 }
 
 type DecoderStatus = 'idle' | 'initializing' | 'ready' | 'decoding' | 'error'
@@ -26,8 +24,6 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [activeStream, setActiveStream] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newSubject, setNewSubject] = useState('')
-  const [newWidth, setNewWidth] = useState(640)
-  const [newHeight, setNewHeight] = useState(480)
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const subscriptionIdRef = useRef<string | null>(null)
@@ -38,6 +34,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
   const [receivedFrames, setReceivedFrames] = useState(0)
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
   const [lastFrameTime, setLastFrameTime] = useState(0)
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     onSettingsChange({ ...settings, streams })
@@ -50,16 +47,14 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     }
     
     const newStream: VideoStreamConfig = {
-      subject: newSubject.trim(),
-      width: newWidth,
-      height: newHeight
+      subject: newSubject.trim()
     }
     
     setStreams(prev => [...prev, newStream])
     setNewSubject('')
     setShowAddModal(false)
     message.success('已添加视频流')
-  }, [newSubject, newWidth, newHeight])
+  }, [newSubject])
 
   const removeStream = useCallback(async (subject: string) => {
     if (activeStream === subject) {
@@ -92,15 +87,16 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     setReceivedFrames(0)
   }, [activeStream])
 
-  const startStream = useCallback(async (subject: string, width: number, height: number) => {
+  const startStream = useCallback(async (subject: string) => {
     await stopStream()
     
     setActiveStream(subject)
     setSubscriptionStatus('subscribing')
     setDecoderStatus('initializing')
+    setVideoDimensions(null)
 
     try {
-      const videoResult = await window.nats.startVideoStream(subject, { width, height })
+      const videoResult = await window.nats.startVideoStream(subject)
       
       if (!videoResult.success) {
         setFfmpegAvailable(false)
@@ -155,6 +151,10 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
 
       setReceivedFrames(prev => prev + 1)
       
+      if (!videoDimensions || videoDimensions.width !== data.width || videoDimensions.height !== data.height) {
+        setVideoDimensions({ width: data.width, height: data.height })
+      }
+      
       const now = performance.now()
       const elapsed = now - lastFrameTime
       setLastFrameTime(now)
@@ -208,7 +208,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
     return () => {
       unsubscribe?.()
     }
-  }, [activeStream, lastFrameTime, decoderStatus])
+  }, [activeStream, lastFrameTime, decoderStatus, videoDimensions])
 
   const handleReset = useCallback(() => {
     setStats({ fps: 0, frameCount: 0, latency: 0 })
@@ -287,14 +287,13 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
                   if (activeStream === stream.subject) {
                     stopStream()
                   } else {
-                    startStream(stream.subject, stream.width || 640, stream.height || 480)
+                    startStream(stream.subject)
                   }
                 }}
               >
                 <Space>
                   <PlayCircleOutlined style={{ color: activeStream === stream.subject ? '#1890ff' : undefined }} />
                   <Text strong={activeStream === stream.subject}>{stream.subject}</Text>
-                  <Tag>{stream.width}x{stream.height}</Tag>
                 </Space>
                 <Space>
                   {activeStream === stream.subject && subscriptionStatus === 'subscribed' && (
@@ -322,6 +321,7 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           <Space>
             <Text>播放器</Text>
             {activeStream && <Tag color="blue">{activeStream}</Tag>}
+            {videoDimensions && <Tag color="purple">{videoDimensions.width}x{videoDimensions.height}</Tag>}
           </Space>
         }
         size="small"
@@ -337,10 +337,25 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
           </Space>
         }
       >
-        <div style={{ position: 'relative', background: '#000', borderRadius: 8, overflow: 'hidden', minHeight: 300 }}>
+        <div style={{ 
+          position: 'relative', 
+          background: '#000', 
+          borderRadius: 8, 
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: videoDimensions ? 'auto' : 300,
+          maxHeight: 500
+        }}>
           <canvas 
             ref={canvasRef} 
-            style={{ width: '100%', height: 300, display: 'block' }} 
+            style={{ 
+              maxWidth: '100%',
+              maxHeight: 500,
+              height: 'auto',
+              display: 'block'
+            }} 
           />
           {decoderStatus !== 'decoding' && (
             <div style={{ 
@@ -379,24 +394,6 @@ const VideoPlayerPanel: React.FC<PluginPanelProps> = ({ settings, onSettingsChan
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
             />
-          </Form.Item>
-          <Form.Item label="分辨率">
-            <Space>
-              <Input 
-                type="number" 
-                style={{ width: 100 }} 
-                value={newWidth}
-                onChange={(e) => setNewWidth(parseInt(e.target.value) || 640)}
-                addonBefore="宽"
-              />
-              <Input 
-                type="number" 
-                style={{ width: 100 }} 
-                value={newHeight}
-                onChange={(e) => setNewHeight(parseInt(e.target.value) || 480)}
-                addonBefore="高"
-              />
-            </Space>
           </Form.Item>
         </Form>
       </Modal>
